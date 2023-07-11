@@ -115,6 +115,19 @@ int read_keyfile(unsigned char* key) {
     return 0;
 }
 
+int read_portfile(unsigned short* ports, int* portc) {
+    FILE* port_file;
+    char* line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    port_file = fopen(PK_FP_PORTS, "r");
+    if (port_file == NULL) return PK_ERR_NP;
+    while ((read = getline(&line, &len, port_file)) != -1) {
+        ports[(*portc)++] = atoi(line);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
@@ -183,20 +196,14 @@ int main(int argc, char** argv) {
 
     memset(datagram, 0, MTU);
 
-    
+        
     unsigned short ports[PK_MAX_PORTC];
-    FILE* port_file;
-    char* line = NULL;
-    size_t len = 0;
-    ssize_t read;
-    port_file = fopen("/etc/pk/pk_ports", "r");
-    if (port_file == NULL) {
-        perror("Unable to open port file\n");
-        exit(EXIT_FAILURE);
-    }
     int portc = 0;
-    while ((read = getline(&line, &len, port_file)) != -1) {
-        ports[portc++] = atoi(line);
+
+    switch (read_portfile(ports, &portc)) {
+        case PK_ERR_NP:
+            perror("Unables to open port file\n");
+            exit(EXIT_FAILURE);
     }
 
     tcph->source = htons(12345);
