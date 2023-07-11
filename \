@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
     size_t len = 0;
     ssize_t read;
     port_file = fopen("/etc/pk/pk_ports", "r");
-    if (port_file == NULL) {
+    if (port_File == NULL) {
         perror("Unable to open port file\n");
         exit(EXIT_FAILURE);
     }
@@ -158,6 +158,9 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }    
 
+    int ports[] = {123, 456, 789};
+    int portc = sizeof(ports) / sizeof(int);
+
     unsigned char iv[16];
     for (int i = 0; i < portc; i++) {
         if (gen_iv(iv) == -1) {
@@ -188,8 +191,8 @@ int main(int argc, char** argv) {
         tcph->dest = htons(ports[i]);    
         iph->tot_len = iph->ihl*4 + tcph_s + data_s + 16;
         
-        if (sendto(sockfd, datagram, iph->tot_len, 0, 
-                (struct sockaddr*) &sin, sizeof(sin)) < 0) {
+        if (sendto(sockfd, datagram, iph->tot_len, 0, (struct sockaddr*) &sin, 
+                                sizeof(sin)) < 0) {
             perror("sendto() error\n");
             exit(EXIT_FAILURE);
         } else {
