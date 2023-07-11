@@ -26,6 +26,7 @@
 #define PK_ARGN_FQDN 2
 #define PK_KEY_BYTES 32
 #define PK_IV_BYTES 16
+#define PK_CIPHER_BYTES 128
 
 #define PK_FP_KEY "/etc/pk/pk_key"
 #define PK_FP_PORTS "/etc/pk/pk_ports"
@@ -38,6 +39,9 @@
 #define PK_ERR_SOCK_OPT 6
 #define PK_ERR_IFR_MTU 7
 #define PK_ERR_IFR_ADDR 8
+#define PK_ERR_CSPRNG 9
+#define PK_ERR_ENCRYPT 10
+#define PK_ERR_SEND 11
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -179,6 +183,64 @@ int init_destsock(struct sockaddr_in* dsock, in_addr_t daddr) {
     return 0;
 }
 
+int get_payload(char* dgram, unsigned char* key) {
+    unsigned char* data = (unsigned char*) (dgram + sizeof(struct iphdr) 
+            + sizeof(struct tcphdr));
+    struct iphdr* iph = (struct iphdr*) dgram;   
+ 
+    unsigned long unixtime = time(NULL);
+    int unixtime_s = snprintf(NULL, 0, "%ld", unixtime);
+    unsigned char ptext[unixtime_s];
+    snprintf((char*)ptext, unixtime_s, "%ld", unixtime);
+
+    unsigned char iv[PK_IV_BYTES];
+    if (gen_iv(iv) == -1) {
+        return PK_ERR_CSPRNG;
+    }
+    int ctext_len;
+    unsigned char ctext[PK_CIPHER_BYTES];
+    ctext_len = encrypt(ptext, strlen((char*)ptext), key, iv, ctext);
+    if (ctext_len == -1) {
+        return PK_ERR_ENCRYPT;
+    }
+    ctext[ctext_len] = '\0';
+    strcpy((char*) data, (char*) iv);
+    strcpy((char*)(data + PK_IV_BYTES), (char*) ctext);
+
+    iph->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr) 
+            + PK_IV_BYTES + ctext_len;
+    return 0;
+}
+
+int set_dport(char* dgram, struct sockaddr_in* dsock, 
+        unsigned short dport) {
+    struct tcphdr* tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
+
+    dsock->sin_port = htons(dport);
+    tcph->dest = htons(dport);
+    return 0;
+}
+
+int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock) {
+    struct iphdr* iph = (struct iphdr*) dgram;
+    if (sendto(sockfd, dgram, iph->tot_len, 0, (struct sockaddr*) &dsock, 
+            sizeof(dsock)) < 0) return PK_ERR_SEND;
+    return 0;
+}
+
+int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd, 
+        struct sockaddr_in dsock, unsigned char* key) {
+    for (int i = 0; i < portc; i++) {
+        int payload_err = get_payload(dgram, key);
+        if (payload_err != 0) return payload_err;
+        int set_dport_err = set_dport(dgram, &dsock, ports[i]);
+        if (set_dport_err != 0) return set_dport_err;
+        int send_err = send_packet(sockfd, dgram, dsock);
+        if (send_err != 0) return send_err;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
@@ -242,51 +304,27 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
    
-    char datagram[MTU];
+    char dgram[MTU];
     struct iphdr* iph = NULL;
     struct tcphdr* tcph = NULL;
-    init_datagram(saddr, daddr, MTU, datagram, &iph, &tcph);
+    init_datagram(saddr, daddr, MTU, dgram, &iph, &tcph);
 
     struct sockaddr_in dsock;
     init_destsock(&dsock, daddr);
     
-    unsigned char iv[16];
-    for (int i = 0; i < portc; i++) {
-        if (gen_iv(iv) == -1) {
+    switch (knock_ports(ports, portc, dgram, sockfd, dsock, key)) {
+        case PK_ERR_CSPRNG:
             fprintf(stderr, "Failed to generate IV\n");
             exit(EXIT_FAILURE);
-        }
-        
-        unsigned long unixtime = time(NULL);
-        int unixtime_s = snprintf(NULL, 0, "%ld", unixtime);
-        unsigned char ptext[unixtime_s];
-        snprintf((char*)ptext, unixtime_s, "%ld", unixtime);
-        
-        unsigned char* data = (unsigned char*) (datagram + sizeof(struct iphdr) + sizeof(struct tcphdr) 
-                + 16);
-        unsigned char* iv_p = (unsigned char*) (datagram + sizeof(struct iphdr) + sizeof(struct tcphdr));
-        memcpy(iv_p, iv, 16);
-        unsigned char ctext[128];
-        int ctext_len;
-        ctext_len = encrypt(ptext, strlen((char*)ptext), key, iv, ctext);
-        if (ctext_len == -1) {
+        case PK_ERR_ENCRYPT:
+            fprintf(stderr, "\n");
             ERR_print_errors_fp(stderr);
+            fprintf(stderr, "\n");
             exit(EXIT_FAILURE);
-        }
-        unsigned int data_s = (unsigned int) ctext_len;
-        ctext[ctext_len] = '\0';
-        strcpy((char*)data, (char*)ctext);
-        
-        tcph->dest = htons(ports[i]);    
-        iph->tot_len = iph->ihl*4 + sizeof(struct tcphdr) + data_s + 16;
-        
-        if (sendto(sockfd, datagram, iph->tot_len, 0, 
-                (struct sockaddr*) &dsock, sizeof(dsock)) < 0) {
-            perror("sendto() error\n");
+        case PK_ERR_SEND:
+            fprintf(stderr, "Failed to send packet:\n\t%s\n", 
+                    strerror(errno));
             exit(EXIT_FAILURE);
-        } else {
-            printf("Sent packet\n");
-        }
     }
     return 0;
 }
