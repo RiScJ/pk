@@ -23,6 +23,7 @@
 #define PKD_IFACE "wlan0"
 #define PKD_MAX_RECV_ERRORS 10
 #define PKD_LIMIT_RECV_ERRORS
+#define PKD_MAX_PORTC 128
 
 volatile sig_atomic_t running = true;
 
@@ -141,8 +142,20 @@ int main(void) {
 
     unsigned int iv_s = 16;
 
-    int ports[] = {123, 456, 789};
-    int portc = sizeof(ports) / sizeof(int);
+    unsigned short ports[PKD_MAX_PORTC];
+    FILE* port_file;
+    char* line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    port_file = fopen("/etc/pk/pk_ports", "r");
+    if (port_file == NULL) {
+        perror("Unable to open port file\n");
+        exit(EXIT_FAILURE);
+    }
+    int portc = 0;
+    while ((read = getline(&line, &len, port_file)) != -1) {
+        ports[portc++] = atoi(line);
+    }
 
     int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if (sockfd == -1) {
