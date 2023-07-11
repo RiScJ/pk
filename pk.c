@@ -64,7 +64,7 @@ int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
 }
 
 int gen_iv(unsigned char* iv) {
-    return RAND_bytes(iv, sizeof(iv));
+    return RAND_bytes(iv, PK_IV_BYTES);
 }
 
 int parse_arguments(int argc, char** argv, char* iface, char* fqdn) {
