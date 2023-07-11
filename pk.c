@@ -102,13 +102,13 @@ int init_socket(int* sockfd) {
     return 0;
 }
 
-int get_netconfig(int sfd, char* iface, int* MTU, 
+int get_netconfig(int sfd, char* iface, int* mtu, 
         in_addr_t* s_addr) {
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
     if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
-    *MTU = ifr.ifr_mtu;
+    *mtu = ifr.ifr_mtu;
     ifr.ifr_addr.sa_family = AF_INET;
     if (ioctl(sfd, SIOCGIFADDR, &ifr) == -1) return PK_ERR_IFR_ADDR;
     struct sockaddr_in* sin;
@@ -138,41 +138,42 @@ int read_portfile(unsigned short* ports, int* portc) {
     port_file = fopen(PK_FP_PORTS, "r");
     if (port_file == NULL) return PK_ERR_NP;
     while ((read = getline(&line, &len, port_file)) != -1) {
+        if (*portc == PK_MAX_PORTC) return PK_ERR_EXTRA_LEN;
         ports[(*portc)++] = atoi(line);
     }
     return 0;
 }
 
 int init_datagram(in_addr_t saddr, in_addr_t daddr, int mtu, char* dgram, 
-        struct iphdr** iph, struct tcphdr** tcph) { 
-    *iph = (struct iphdr*) dgram;
-    *tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
+        struct iphdr* iph, struct tcphdr* tcph) { 
+    iph = (struct iphdr*) dgram;
+    tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
     memset(dgram, 0, mtu);
     
-    (*tcph)->source = htons(12345);
-    (*tcph)->seq = 0;
-    (*tcph)->ack_seq = 0;
-    (*tcph)->res1 = 0;
-    (*tcph)->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
-    (*tcph)->fin = 0;
-    (*tcph)->syn = 1;
-    (*tcph)->rst = 0;
-    (*tcph)->psh = 0;
-    (*tcph)->ack = 0;
-    (*tcph)->urg = 0;
-    (*tcph)->window = htonl(32767);
-    (*tcph)->check = 0;
-    (*tcph)->urg_ptr = 0;
+    (tcph)->source = htons(12345);
+    (tcph)->seq = 0;
+    (tcph)->ack_seq = 0;
+    (tcph)->res1 = 0;
+    (tcph)->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
+    (tcph)->fin = 0;
+    (tcph)->syn = 1;
+    (tcph)->rst = 0;
+    (tcph)->psh = 0;
+    (tcph)->ack = 0;
+    (tcph)->urg = 0;
+    (tcph)->window = htonl(32767);
+    (tcph)->check = 0;
+    (tcph)->urg_ptr = 0;
 
-    (*iph)->ihl = 5;
-    (*iph)->version = 4;
-    (*iph)->tos = 0;
-    (*iph)->id = htonl(54321);
-    (*iph)->ttl = 255;
-    (*iph)->protocol = IPPROTO_TCP;
-    (*iph)->check = 0;
-    (*iph)->saddr = saddr;
-    (*iph)->daddr = daddr;
+    (iph)->ihl = 5;
+    (iph)->version = 4;
+    (iph)->tos = 0;
+    (iph)->id = htonl(54321);
+    (iph)->ttl = 255;
+    (iph)->protocol = IPPROTO_TCP;
+    (iph)->check = 0;
+    (iph)->saddr = saddr;
+    (iph)->daddr = daddr;
 
     return 0;
 }
@@ -274,17 +275,21 @@ int main(int argc, char** argv) {
         case PK_ERR_NP:
             fprintf(stderr, "Unable to open port file\n");
             exit(EXIT_FAILURE);
+        case PK_ERR_EXTRA_LEN:
+            fprintf(stderr, "More ports specified than max - ignoring "
+                    "extras\n");
+            break;
     }
 
     in_addr_t daddr = 0;
-    switch(resolve_fqdn(host, &daddr)) {
+    switch (resolve_fqdn(host, &daddr)) {
         case PK_ERR_NP:
             fprintf(stderr, "Failure resolving FQDN\n");
             exit(EXIT_FAILURE);
     }   
 
     int sockfd = 0;
-    switch(init_socket(&sockfd)) {
+    switch (init_socket(&sockfd)) {
         case PK_ERR_SOCK_NEW:
             fprintf(stderr, "Error creating socket\n");
             exit(EXIT_FAILURE);
@@ -293,21 +298,21 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
 
-    int MTU = 0;
+    int mtu = 0;
     in_addr_t saddr = 0; 
-    switch(get_netconfig(sockfd, iface, &MTU, &saddr)) {
+    switch (get_netconfig(sockfd, iface, &mtu, &saddr)) {
         case PK_ERR_IFR_MTU:
-            fprintf(stderr, "Cannot get interface MTU\n");
+            fprintf(stderr, "Cannot get interface mtu\n");
             exit(EXIT_FAILURE);
         case PK_ERR_IFR_ADDR:
             fprintf(stderr, "Cannot get interface address\n");
             exit(EXIT_FAILURE);
     }
    
-    char dgram[MTU];
+    char dgram[mtu];
     struct iphdr* iph = NULL;
     struct tcphdr* tcph = NULL;
-    init_datagram(saddr, daddr, MTU, dgram, &iph, &tcph);
+    init_datagram(saddr, daddr, mtu, dgram, iph, tcph);
 
     struct sockaddr_in dsock;
     init_destsock(&dsock, daddr);
