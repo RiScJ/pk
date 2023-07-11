@@ -16,6 +16,8 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 
+#define NET_BYTES_PER_WORD 4
+
 #define PK_IFACE_MAX_LEN 128
 #define PK_FQDN_MAX_LEN 128
 #define PK_MAX_PORTC 128
@@ -128,6 +130,38 @@ int read_portfile(unsigned short* ports, int* portc) {
     return 0;
 }
 
+int init_datagram(int mtu, char* dgram, struct iphdr** iph, 
+        struct tcphdr** tcph) { 
+    *iph = (struct iphdr*) dgram;
+    *tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
+    memset(dgram, 0, mtu);
+    
+    (*tcph)->source = htons(12345);
+    (*tcph)->seq = 0;
+    (*tcph)->ack_seq = 0;
+    (*tcph)->res1 = 0;
+    (*tcph)->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
+    (*tcph)->fin = 0;
+    (*tcph)->syn = 1;
+    (*tcph)->rst = 0;
+    (*tcph)->psh = 0;
+    (*tcph)->ack = 0;
+    (*tcph)->urg = 0;
+    (*tcph)->window = htonl(32767);
+    (*tcph)->check = 0;
+    (*tcph)->urg_ptr = 0;
+
+    (*iph)->ihl = 5;
+    (*iph)->version = 4;
+    (*iph)->tos = 0;
+    (*iph)->id = htonl(54321);
+    (*iph)->ttl = 255;
+    (*iph)->protocol = IPPROTO_TCP;
+    (*iph)->check = 0;
+
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
@@ -155,6 +189,14 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
     
+    unsigned short ports[PK_MAX_PORTC];
+    int portc = 0;
+    switch (read_portfile(ports, &portc)) {
+        case PK_ERR_NP:
+            perror("Unables to open port file\n");
+            exit(EXIT_FAILURE);
+    }
+
     struct in_addr* target = NULL;
     switch(resolve_fqdn(host, &target)) {
         case PK_ERR_NP:
@@ -181,53 +223,15 @@ int main(int argc, char** argv) {
     }
    
     char datagram[MTU];
-    
-    struct iphdr* iph = (struct iphdr*) datagram;
-    unsigned int iph_s = sizeof(struct iphdr);
-
-    struct tcphdr* tcph = (struct tcphdr*) (datagram + iph_s);
-    unsigned int tcph_s = sizeof(struct tcphdr);
-
+    struct iphdr* iph = NULL;
+    struct tcphdr* tcph = NULL;
+    init_datagram(MTU, datagram, &iph, &tcph);
 
     struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     sin.sin_port = htons(123);
     sin.sin_addr.s_addr = inet_addr(inet_ntoa(*target));
-
-    memset(datagram, 0, MTU);
-
-        
-    unsigned short ports[PK_MAX_PORTC];
-    int portc = 0;
-
-    switch (read_portfile(ports, &portc)) {
-        case PK_ERR_NP:
-            perror("Unables to open port file\n");
-            exit(EXIT_FAILURE);
-    }
-
-    tcph->source = htons(12345);
-    tcph->seq = 0;
-    tcph->ack_seq = 0;
-    tcph->res1 = 0;
-    tcph->doff = tcph_s / 4;
-    tcph->fin = 0;
-    tcph->syn = 1;
-    tcph->rst = 0;
-    tcph->psh = 0;
-    tcph->ack = 0;
-    tcph->urg = 0;
-    tcph->window = htonl(32767);
-    tcph->check = 0;
-    tcph->urg_ptr = 0;
-
-    iph->ihl = 5;
-    iph->version = 4;
-    iph->tos = 0;
-    iph->id = htonl(54321);
-    iph->ttl = 255;
-    iph->protocol = IPPROTO_TCP;
-    iph->check = 0;
+    
     iph->saddr = src_addr;
     iph->daddr = inet_addr(inet_ntoa(*target));
 
@@ -251,9 +255,9 @@ int main(int argc, char** argv) {
         unsigned char ptext[unixtime_s];
         snprintf((char*)ptext, unixtime_s, "%ld", unixtime);
         
-        unsigned char* data = (unsigned char*) (datagram + iph_s + tcph_s 
+        unsigned char* data = (unsigned char*) (datagram + sizeof(struct iphdr) + sizeof(struct tcphdr) 
                 + 16);
-        unsigned char* iv_p = (unsigned char*) (datagram + iph_s + tcph_s);
+        unsigned char* iv_p = (unsigned char*) (datagram + sizeof(struct iphdr) + sizeof(struct tcphdr));
         memcpy(iv_p, iv, 16);
         unsigned char ctext[128];
         int ctext_len;
@@ -267,7 +271,7 @@ int main(int argc, char** argv) {
         strcpy((char*)data, (char*)ctext);
         
         tcph->dest = htons(ports[i]);    
-        iph->tot_len = iph->ihl*4 + tcph_s + data_s + 16;
+        iph->tot_len = iph->ihl*4 + sizeof(struct tcphdr) + data_s + 16;
         
         if (sendto(sockfd, datagram, iph->tot_len, 0, 
                 (struct sockaddr*) &sin, sizeof(sin)) < 0) {
