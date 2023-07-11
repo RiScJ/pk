@@ -115,7 +115,9 @@ int decrypt(unsigned char* ctext, int ctext_len, unsigned char* key,
     if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
         return -1;
     }
-    if (1 != EVP_DecryptUpdate(ctx, ptext, &len, ctext, ctext_len)) return -1;
+    if (1 != EVP_DecryptUpdate(ctx, ptext, &len, ctext, ctext_len)) {
+        return -1;
+    }
     ptext_len = len;
     if (1 != EVP_DecryptFinal_ex(ctx, ptext + len, &len)) return -1;
     ptext_len += len;
@@ -230,7 +232,8 @@ int main(int argc, char** argv) {
             #ifdef PKD_LIMIT_RECV_ERRORS
             recv_errors++;
             if (recv_errors > PKD_MAX_RECV_ERRORS) {
-                fprintf(stderr, "Exceeded max consecutive recieve errors\n");    
+                fprintf(stderr, "Exceeded max consecutive recieve "
+                        "errors\n");    
                 close(sockfd);
                 pthread_mutex_destroy(&conn_list_lock);
                 exit(EXIT_FAILURE);    
@@ -242,7 +245,8 @@ int main(int argc, char** argv) {
         struct iphdr* iph = (struct iphdr*)(packet + ethhdr_s);
         if (iph->protocol != IPPROTO_TCP) continue;
         unsigned int iphdr_s = iph->ihl * 4;
-        struct tcphdr* tcph = (struct tcphdr*) (packet + iphdr_s + ethhdr_s);
+        struct tcphdr* tcph = (struct tcphdr*) (packet + iphdr_s 
+                + ethhdr_s);
         unsigned int tcphdr_s = tcph->doff * 4;
 
         if ( tcph->ack) continue;
@@ -260,14 +264,17 @@ int main(int argc, char** argv) {
                                             ntohs(tcph->dest));
         if (ntohs(tcph->dest) == ports[state->index]) {
             
-            unsigned char* e_msg = (unsigned char*) (packet + ethhdr_s + iphdr_s + tcphdr_s + iv_s);
-            unsigned int e_msg_s = ntohs(iph->tot_len) - iphdr_s - tcphdr_s - iv_s;
+            unsigned char* e_msg = (unsigned char*) (packet + ethhdr_s 
+                    + iphdr_s + tcphdr_s + iv_s);
+            unsigned int e_msg_s = ntohs(iph->tot_len) - iphdr_s 
+                    - tcphdr_s - iv_s;
             if (e_msg_s == 0) {
                 state->index = 0;
                 printf("\u2717\n");
                 continue;
             }
-            unsigned char* iv = (unsigned char*) (packet + ethhdr_s + iphdr_s + tcphdr_s);
+            unsigned char* iv = (unsigned char*) (packet + ethhdr_s 
+                    + iphdr_s + tcphdr_s);
             unsigned char d_msg[128];
             int d_msg_s = decrypt(e_msg, (int) e_msg_s, key, iv, d_msg);
             if (d_msg_s == -1) {
