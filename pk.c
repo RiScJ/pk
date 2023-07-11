@@ -89,6 +89,14 @@ int main(int argc, char** argv) {
     struct tcphdr* tcph = (struct tcphdr*) (datagram + iph_s);
     unsigned int tcph_s = sizeof(struct tcphdr);
 
+    struct ifreq ifr;
+    ifr.ifr_addr.sa_family = AF_INET;
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sockfd, SIOCGIFADDR, &ifr) == -1) {
+        perror("Error getting interface address\n");
+        exit(EXIT_FAILURE);
+    }
+
     struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     sin.sin_port = htons(123);
@@ -147,7 +155,8 @@ int main(int argc, char** argv) {
     iph->ttl = 255;
     iph->protocol = IPPROTO_TCP;
     iph->check = 0;
-    iph->saddr = inet_addr("10.0.0.35");
+    iph->saddr = inet_addr(inet_ntoa(((struct sockaddr_in*)&ifr.ifr_addr)
+            ->sin_addr));
     iph->daddr = inet_addr(inet_ntoa(*target));
 
     int one = 1;
