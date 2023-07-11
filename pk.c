@@ -80,29 +80,39 @@ int main(int argc, char** argv) {
         perror("Error creating socket\n");
         exit(EXIT_FAILURE);
     }
-
-    char datagram[1500];
-
-    struct iphdr* iph = (struct iphdr*) datagram;
-    unsigned int iph_s = sizeof(struct iphdr);
-
-    struct tcphdr* tcph = (struct tcphdr*) (datagram + iph_s);
-    unsigned int tcph_s = sizeof(struct tcphdr);
-
+    
     struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sockfd, SIOCGIFMTU, &ifr) == -1) {
+        perror("Error getting MTU\n");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+    int MTU = ifr.ifr_mtu;
+
+    char datagram[MTU];
+    
     ifr.ifr_addr.sa_family = AF_INET;
     strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
     if (ioctl(sockfd, SIOCGIFADDR, &ifr) == -1) {
         perror("Error getting interface address\n");
         exit(EXIT_FAILURE);
     }
+    
+    struct iphdr* iph = (struct iphdr*) datagram;
+    unsigned int iph_s = sizeof(struct iphdr);
+
+    struct tcphdr* tcph = (struct tcphdr*) (datagram + iph_s);
+    unsigned int tcph_s = sizeof(struct tcphdr);
+
 
     struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     sin.sin_port = htons(123);
     sin.sin_addr.s_addr = inet_addr(inet_ntoa(*target));
 
-    memset(datagram, 0, 1500);
+    memset(datagram, 0, MTU);
 
     unsigned char key[32];
     FILE* key_file;
