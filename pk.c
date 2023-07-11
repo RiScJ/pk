@@ -74,12 +74,13 @@ int parse_arguments(int argc, char** argv, char* iface, char* fqdn) {
     return 0;
 }
 
-int resolve_fqdn(char* fqdn, __attribute__((unused)) 
-        struct in_addr** target) {
+int resolve_fqdn(char* fqdn, in_addr_t* daddr) {
     struct hostent* h;
     h = gethostbyname(fqdn);
     if (h == NULL) return PK_ERR_NP;
-    *target = (struct in_addr*) (h->h_addr);
+    struct in_addr* target;
+    target = (struct in_addr*) (h->h_addr);
+    *daddr = target->s_addr;
     return 0;
 }
 
@@ -162,9 +163,9 @@ int init_datagram(int mtu, char* dgram, struct iphdr** iph,
     return 0;
 }
 
-int init_destsock(struct sockaddr_in* dsock, struct in_addr* target) {
+int init_destsock(struct sockaddr_in* dsock, in_addr_t daddr) {
     dsock->sin_family = AF_INET;
-    dsock->sin_addr.s_addr = inet_addr(inet_ntoa(*target));
+    dsock->sin_addr.s_addr = daddr;
     return 0;
 }
 
@@ -203,8 +204,8 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
 
-    struct in_addr* target = NULL;
-    switch(resolve_fqdn(host, &target)) {
+    in_addr_t daddr = 0;
+    switch(resolve_fqdn(host, &daddr)) {
         case PK_ERR_NP:
             fprintf(stderr, "Failure resolving FQDN\n");
             exit(EXIT_FAILURE);
@@ -234,10 +235,10 @@ int main(int argc, char** argv) {
     init_datagram(MTU, datagram, &iph, &tcph);
 
     struct sockaddr_in dsock;
-    init_destsock(&dsock, target);
+    init_destsock(&dsock, daddr);
     
     iph->saddr = src_addr;
-    iph->daddr = inet_addr(inet_ntoa(*target));
+    iph->daddr = daddr;
 
     int one = 1;
     const int* one_a = &one;
