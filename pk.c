@@ -233,10 +233,10 @@ int main(int argc, char** argv) {
     in_addr_t src_addr = 0; 
     switch(get_netconfig(sockfd, iface, &MTU, &src_addr)) {
         case PK_ERR_IFR_MTU:
-            perror("Cannot get interface MTU\n");
+            fprintf(stderr, "Cannot get interface MTU\n");
             exit(EXIT_FAILURE);
         case PK_ERR_IFR_ADDR:
-            perror("Cannot get interface address\n");
+            fprintf(stderr, "Cannot get interface address\n");
             exit(EXIT_FAILURE);
     }
    
