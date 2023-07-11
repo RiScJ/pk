@@ -162,6 +162,12 @@ int init_datagram(int mtu, char* dgram, struct iphdr** iph,
     return 0;
 }
 
+int init_destsock(struct sockaddr_in* dsock, struct in_addr* target) {
+    dsock->sin_family = AF_INET;
+    dsock->sin_addr.s_addr = inet_addr(inet_ntoa(*target));
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
@@ -227,10 +233,8 @@ int main(int argc, char** argv) {
     struct tcphdr* tcph = NULL;
     init_datagram(MTU, datagram, &iph, &tcph);
 
-    struct sockaddr_in sin;
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(123);
-    sin.sin_addr.s_addr = inet_addr(inet_ntoa(*target));
+    struct sockaddr_in dsock;
+    init_destsock(&dsock, target);
     
     iph->saddr = src_addr;
     iph->daddr = inet_addr(inet_ntoa(*target));
@@ -274,7 +278,7 @@ int main(int argc, char** argv) {
         iph->tot_len = iph->ihl*4 + sizeof(struct tcphdr) + data_s + 16;
         
         if (sendto(sockfd, datagram, iph->tot_len, 0, 
-                (struct sockaddr*) &sin, sizeof(sin)) < 0) {
+                (struct sockaddr*) &dsock, sizeof(dsock)) < 0) {
             perror("sendto() error\n");
             exit(EXIT_FAILURE);
         } else {
