@@ -272,7 +272,10 @@ int main(int argc, char** argv) {
             int d_msg_s = decrypt(e_msg, (int) e_msg_s, key, iv, d_msg);
             if (d_msg_s == -1) {
                 ERR_print_errors_fp(stderr);
-                exit(EXIT_FAILURE);
+                printf("\n");
+                fprintf(stderr, "Bad decrypt - resetting...\n");
+                state->index = 0;
+                continue;
             }
             if (!validate(d_msg)) {
                 state->index = 0;
