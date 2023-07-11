@@ -34,9 +34,10 @@
 #define PK_ERR_EXTRA_LEN 2
 #define PK_ERR_BUF_OF 3
 #define PK_ERR_NP 4
-#define PK_ERR_SOCK 5
-#define PK_ERR_IFR_MTU 6
-#define PK_ERR_IFR_ADDR 7
+#define PK_ERR_SOCK_NEW 5
+#define PK_ERR_SOCK_OPT 6
+#define PK_ERR_IFR_MTU 7
+#define PK_ERR_IFR_ADDR 8
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -86,7 +87,14 @@ int resolve_fqdn(char* fqdn, in_addr_t* daddr) {
 
 int init_socket(int* sockfd) {
     *sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (*sockfd == -1) return PK_ERR_SOCK;
+    if (*sockfd == -1) return PK_ERR_SOCK_NEW;
+    int one = 1;
+    const int* one_a = &one;
+    if (setsockopt(*sockfd, IPPROTO_IP, IP_HDRINCL, one_a, 
+            sizeof(one)) < 0) {
+        close(*sockfd);
+        return PK_ERR_SOCK_OPT;
+    }
     return 0;
 }
 
@@ -200,7 +208,7 @@ int main(int argc, char** argv) {
     int portc = 0;
     switch (read_portfile(ports, &portc)) {
         case PK_ERR_NP:
-            perror("Unables to open port file\n");
+            fprintf(stderr, "Unable to open port file\n");
             exit(EXIT_FAILURE);
     }
 
@@ -213,8 +221,11 @@ int main(int argc, char** argv) {
 
     int sockfd = 0;
     switch(init_socket(&sockfd)) {
-        case PK_ERR_SOCK:
-            perror("Error creating socket\n");
+        case PK_ERR_SOCK_NEW:
+            fprintf(stderr, "Error creating socket\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_SOCK_OPT:
+            fprintf(stderr, "Error setting socket options\n");
             exit(EXIT_FAILURE);
     }
 
@@ -239,14 +250,6 @@ int main(int argc, char** argv) {
     
     iph->saddr = src_addr;
     iph->daddr = daddr;
-
-    int one = 1;
-    const int* one_a = &one;
-    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, one_a, 
-            sizeof(one)) < 0) {
-        perror("setsockopt() error\n");
-        exit(EXIT_FAILURE);
-    }    
 
     unsigned char iv[16];
     for (int i = 0; i < portc; i++) {
