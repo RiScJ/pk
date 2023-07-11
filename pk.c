@@ -150,30 +150,30 @@ int init_datagram(in_addr_t saddr, in_addr_t daddr, int mtu, char* dgram,
     tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
     memset(dgram, 0, mtu);
     
-    (tcph)->source = htons(12345);
-    (tcph)->seq = 0;
-    (tcph)->ack_seq = 0;
-    (tcph)->res1 = 0;
-    (tcph)->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
-    (tcph)->fin = 0;
-    (tcph)->syn = 1;
-    (tcph)->rst = 0;
-    (tcph)->psh = 0;
-    (tcph)->ack = 0;
-    (tcph)->urg = 0;
-    (tcph)->window = htonl(32767);
-    (tcph)->check = 0;
-    (tcph)->urg_ptr = 0;
+    tcph->source = htons(12345);
+    tcph->seq = 0;
+    tcph->ack_seq = 0;
+    tcph->res1 = 0;
+    tcph->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
+    tcph->fin = 0;
+    tcph->syn = 1;
+    tcph->rst = 0;
+    tcph->psh = 0;
+    tcph->ack = 0;
+    tcph->urg = 0;
+    tcph->window = htonl(32767);
+    tcph->check = 0;
+    tcph->urg_ptr = 0;
 
-    (iph)->ihl = 5;
-    (iph)->version = 4;
-    (iph)->tos = 0;
-    (iph)->id = htonl(54321);
-    (iph)->ttl = 255;
-    (iph)->protocol = IPPROTO_TCP;
-    (iph)->check = 0;
-    (iph)->saddr = saddr;
-    (iph)->daddr = daddr;
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->id = htonl(54321);
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_TCP;
+    iph->check = 0;
+    iph->saddr = saddr;
+    iph->daddr = daddr;
 
     return 0;
 }
