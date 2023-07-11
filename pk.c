@@ -1,14 +1,23 @@
 #include <arpa/inet.h>
+#include <arpa/nameser.h>
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <resolv.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
 #include <netinet/ip.h>
+#include <unistd.h>
+
+#define PK_IFACE_MAX_LEN 128
+#define PK_FQDN_MAX_LEN 128
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -20,7 +29,9 @@ int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
     if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
         return -1;
     }
-    if (1 != EVP_EncryptUpdate(ctx, ctext, &len, ptext, ptext_len)) return -1;
+    if (1 != EVP_EncryptUpdate(ctx, ctext, &len, ptext, ptext_len)) {
+        return -1;
+    }
     ctext_len = len;
     if (1 != EVP_EncryptFinal_ex(ctx, ctext + len, &len)) return -1;
     ctext_len += len;
@@ -32,7 +43,37 @@ int gen_iv(unsigned char* iv) {
     return RAND_bytes(iv, sizeof(iv));
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        fprintf(stderr, "Must specify interface and target - aborting\n");
+        exit(EXIT_FAILURE);
+    }  
+
+    char iface[PK_IFACE_MAX_LEN];
+    if (strlen(argv[1]) > PK_IFACE_MAX_LEN) {
+        fprintf(stderr, "Interface name is too long\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(iface, argv[1]);
+
+    char host[PK_FQDN_MAX_LEN];
+    if (strlen(argv[2]) > PK_FQDN_MAX_LEN) {
+        fprintf(stderr, "FQDN is too long\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(host, argv[2]);
+    struct hostent* host_info;
+    struct in_addr* target;
+
+    host_info = gethostbyname(host);
+    if (host_info == NULL) {
+        perror("Error getting host IP\n");
+        exit(EXIT_FAILURE);
+    }
+    target = (struct in_addr*) (host_info->h_addr);
+
+    printf("%s\n", inet_ntoa(*target));
+
     int sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
     if (sockfd == -1) {
         perror("Error creating socket\n");
@@ -50,7 +91,7 @@ int main(void) {
     struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     sin.sin_port = htons(123);
-    sin.sin_addr.s_addr = inet_addr("10.0.0.35");
+    sin.sin_addr.s_addr = inet_addr(inet_ntoa(*target));
 
     memset(datagram, 0, 1500);
 
@@ -91,11 +132,12 @@ int main(void) {
     iph->protocol = IPPROTO_TCP;
     iph->check = 0;
     iph->saddr = inet_addr("10.0.0.35");
-    iph->daddr = inet_addr("10.0.0.35");
+    iph->daddr = inet_addr(inet_ntoa(*target));
 
     int one = 1;
     const int* one_a = &one;
-    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, one_a, sizeof(one)) < 0) {
+    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, one_a, 
+            sizeof(one)) < 0) {
         perror("setsockopt() error\n");
         exit(EXIT_FAILURE);
     }    
@@ -115,7 +157,8 @@ int main(void) {
         unsigned char ptext[unixtime_s];
         snprintf((char*)ptext, unixtime_s, "%ld", unixtime);
         
-        unsigned char* data = (unsigned char*) (datagram + iph_s + tcph_s + 16);
+        unsigned char* data = (unsigned char*) (datagram + iph_s + tcph_s 
+                + 16);
         unsigned char* iv_p = (unsigned char*) (datagram + iph_s + tcph_s);
         memcpy(iv_p, iv, 16);
         unsigned char ctext[128];
@@ -127,7 +170,7 @@ int main(void) {
         }
         unsigned int data_s = (unsigned int) ctext_len;
         ctext[ctext_len] = '\0';
-        strcpy(data, ctext);
+        strcpy((char*)data, (char*)ctext);
         
         tcph->dest = htons(ports[i]);    
         iph->tot_len = iph->ihl*4 + tcph_s + data_s + 16;
