@@ -139,8 +139,8 @@ int read_portfile(unsigned short* ports, int* portc) {
     return 0;
 }
 
-int init_datagram(int mtu, char* dgram, struct iphdr** iph, 
-        struct tcphdr** tcph) { 
+int init_datagram(in_addr_t saddr, in_addr_t daddr, int mtu, char* dgram, 
+        struct iphdr** iph, struct tcphdr** tcph) { 
     *iph = (struct iphdr*) dgram;
     *tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
     memset(dgram, 0, mtu);
@@ -167,6 +167,8 @@ int init_datagram(int mtu, char* dgram, struct iphdr** iph,
     (*iph)->ttl = 255;
     (*iph)->protocol = IPPROTO_TCP;
     (*iph)->check = 0;
+    (*iph)->saddr = saddr;
+    (*iph)->daddr = daddr;
 
     return 0;
 }
@@ -230,8 +232,8 @@ int main(int argc, char** argv) {
     }
 
     int MTU = 0;
-    in_addr_t src_addr = 0; 
-    switch(get_netconfig(sockfd, iface, &MTU, &src_addr)) {
+    in_addr_t saddr = 0; 
+    switch(get_netconfig(sockfd, iface, &MTU, &saddr)) {
         case PK_ERR_IFR_MTU:
             fprintf(stderr, "Cannot get interface MTU\n");
             exit(EXIT_FAILURE);
@@ -243,14 +245,11 @@ int main(int argc, char** argv) {
     char datagram[MTU];
     struct iphdr* iph = NULL;
     struct tcphdr* tcph = NULL;
-    init_datagram(MTU, datagram, &iph, &tcph);
+    init_datagram(saddr, daddr, MTU, datagram, &iph, &tcph);
 
     struct sockaddr_in dsock;
     init_destsock(&dsock, daddr);
     
-    iph->saddr = src_addr;
-    iph->daddr = daddr;
-
     unsigned char iv[16];
     for (int i = 0; i < portc; i++) {
         if (gen_iv(iv) == -1) {
