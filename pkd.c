@@ -20,10 +20,10 @@
 #include <unistd.h>
 
 #define PKD_FLUSH_INTERVAL 60
-#define PKD_IFACE "wlan0"
 #define PKD_MAX_RECV_ERRORS 10
 #define PKD_LIMIT_RECV_ERRORS
 #define PKD_MAX_PORTC 128
+#define iface_MAX_LEN 128
 
 volatile sig_atomic_t running = true;
 
@@ -123,8 +123,20 @@ int decrypt(unsigned char* ctext, int ctext_len, unsigned char* key,
     return ptext_len;
 }
 
-int main(void) {
+int main(int argc, char** argv) {
     signal(SIGINT, handle_signal);
+
+    if (argc < 2) {
+        fprintf(stderr, "Must specify interface - aborting\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    char iface[iface_MAX_LEN];
+    if (strlen(argv[1]) > iface_MAX_LEN) {
+        fprintf(stderr, "Interface name too long\n");
+        exit(EXIT_FAILURE);
+    }
+    strcpy(iface, argv[1]);
     
     unsigned char key[32];
     FILE* key_file;
@@ -165,7 +177,7 @@ int main(void) {
 
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, PKD_IFACE, IFNAMSIZ - 1);
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
     if (ioctl(sockfd, SIOCGIFMTU, &ifr) == -1) {
         perror("Error getting MTU\n");
         close(sockfd);
