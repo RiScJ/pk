@@ -19,6 +19,15 @@
 #define PK_IFACE_MAX_LEN 128
 #define PK_FQDN_MAX_LEN 128
 #define PK_MAX_PORTC 128
+#define PK_ARGC 3
+#define PK_ARGN_IFACE 1
+#define PK_ARGN_FQDN 2
+
+#define PK_ERR_INSUF_ARGS 1
+#define PK_ERR_EXTRA_ARGS 2
+#define PK_ERR_BUF_OF 3
+#define PK_ERR_NP 4
+#define PK_ERR_SOCK 5
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -44,43 +53,64 @@ int gen_iv(unsigned char* iv) {
     return RAND_bytes(iv, sizeof(iv));
 }
 
+int parse_arguments(int argc, char** argv, char* iface, char* fqdn) {
+    if (argc < PK_ARGC) return PK_ERR_INSUF_ARGS;
+    if (argc > PK_ARGC) return PK_ERR_EXTRA_ARGS;
+    if (strlen(argv[PK_ARGN_IFACE]) > PK_IFACE_MAX_LEN 
+            || strlen(argv[PK_ARGN_FQDN]) > PK_FQDN_MAX_LEN)
+                    return PK_ERR_BUF_OF; 
+    
+    strcpy(iface, argv[PK_ARGN_IFACE]);
+    strcpy(fqdn, argv[PK_ARGN_FQDN]);
+    return 0;
+}
+
+int resolve_fqdn(char* fqdn, __attribute__((unused)) 
+        struct in_addr** target) {
+    struct hostent* h;
+    h = gethostbyname(fqdn);
+    if (h == NULL) return PK_ERR_NP;
+    *target = (struct in_addr*) (h->h_addr);
+    return 0;
+}
+
+int init_socket(int* sockfd) {
+    *sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (*sockfd == -1) return PK_ERR_SOCK;
+    return 0;
+}
+
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        fprintf(stderr, "Must specify interface and target - aborting\n");
-        exit(EXIT_FAILURE);
-    }  
-
     char iface[PK_IFACE_MAX_LEN];
-    if (strlen(argv[1]) > PK_IFACE_MAX_LEN) {
-        fprintf(stderr, "Interface name is too long\n");
-        exit(EXIT_FAILURE);
-    }
-    strcpy(iface, argv[1]);
-
     char host[PK_FQDN_MAX_LEN];
-    if (strlen(argv[2]) > PK_FQDN_MAX_LEN) {
-        fprintf(stderr, "FQDN is too long\n");
-        exit(EXIT_FAILURE);
-    }
-    strcpy(host, argv[2]);
-    struct hostent* host_info;
-    struct in_addr* target;
-
-    host_info = gethostbyname(host);
-    if (host_info == NULL) {
-        perror("Error getting host IP\n");
-        exit(EXIT_FAILURE);
-    }
-    target = (struct in_addr*) (host_info->h_addr);
-
-    printf("%s\n", inet_ntoa(*target));
-
-    int sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (sockfd == -1) {
-        perror("Error creating socket\n");
-        exit(EXIT_FAILURE);
+    switch (parse_arguments(argc, argv, iface, host)) {
+        case PK_ERR_INSUF_ARGS:
+            fprintf(stderr, "Insufficient arguments\n");
+            fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_EXTRA_ARGS:
+            fprintf(stderr, "Too many arguments\n");
+            fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_BUF_OF:
+            fprintf(stderr, "Argument length exceeds max\n");
+            exit(EXIT_FAILURE);
     }
     
+    struct in_addr* target = NULL;
+    switch(resolve_fqdn(host, &target)) {
+        case PK_ERR_NP:
+            fprintf(stderr, "Failure resolving FQDN\n");
+            exit(EXIT_FAILURE);
+    }   
+
+    int sockfd = 0;
+    switch(init_socket(&sockfd)) {
+        case PK_ERR_SOCK:
+            perror("Error creating socket\n");
+            exit(EXIT_FAILURE);
+    }
+ 
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
