@@ -28,6 +28,8 @@
 #define PK_ERR_BUF_OF 3
 #define PK_ERR_NP 4
 #define PK_ERR_SOCK 5
+#define PK_ERR_IFR_MTU 6
+#define PK_ERR_IFR_ADDR 7
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -80,6 +82,21 @@ int init_socket(int* sockfd) {
     return 0;
 }
 
+int get_netconfig(int sfd, char* iface, int* MTU, 
+        in_addr_t* s_addr) {
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
+    *MTU = ifr.ifr_mtu;
+    ifr.ifr_addr.sa_family = AF_INET;
+    if (ioctl(sfd, SIOCGIFADDR, &ifr) == -1) return PK_ERR_IFR_ADDR;
+    struct sockaddr_in* sin;
+    sin = (struct sockaddr_in*) &ifr.ifr_addr;
+    *s_addr = sin->sin_addr.s_addr;
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
@@ -110,25 +127,19 @@ int main(int argc, char** argv) {
             perror("Error creating socket\n");
             exit(EXIT_FAILURE);
     }
- 
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(sockfd, SIOCGIFMTU, &ifr) == -1) {
-        perror("Error getting MTU\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
-    int MTU = ifr.ifr_mtu;
 
-    char datagram[MTU];
-    
-    ifr.ifr_addr.sa_family = AF_INET;
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(sockfd, SIOCGIFADDR, &ifr) == -1) {
-        perror("Error getting interface address\n");
-        exit(EXIT_FAILURE);
+    int MTU = 0;
+    in_addr_t src_addr = 0; 
+    switch(get_netconfig(sockfd, iface, &MTU, &src_addr)) {
+        case PK_ERR_IFR_MTU:
+            perror("Cannot get interface MTU\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_IFR_ADDR:
+            perror("Cannot get interface address\n");
+            exit(EXIT_FAILURE);
     }
+   
+    char datagram[MTU];
     
     struct iphdr* iph = (struct iphdr*) datagram;
     unsigned int iph_s = sizeof(struct iphdr);
@@ -195,8 +206,7 @@ int main(int argc, char** argv) {
     iph->ttl = 255;
     iph->protocol = IPPROTO_TCP;
     iph->check = 0;
-    iph->saddr = inet_addr(inet_ntoa(((struct sockaddr_in*)&ifr.ifr_addr)
-            ->sin_addr));
+    iph->saddr = src_addr;
     iph->daddr = inet_addr(inet_ntoa(*target));
 
     int one = 1;
