@@ -22,9 +22,14 @@
 #define PK_ARGC 3
 #define PK_ARGN_IFACE 1
 #define PK_ARGN_FQDN 2
+#define PK_KEY_BYTES 32
+#define PK_IV_BYTES 16
 
-#define PK_ERR_INSUF_ARGS 1
-#define PK_ERR_EXTRA_ARGS 2
+#define PK_FP_KEY "/etc/pk/pk_key"
+#define PK_FP_PORTS "/etc/pk/pk_ports"
+
+#define PK_ERR_INSUF_LEN 1
+#define PK_ERR_EXTRA_LEN 2
 #define PK_ERR_BUF_OF 3
 #define PK_ERR_NP 4
 #define PK_ERR_SOCK 5
@@ -56,8 +61,8 @@ int gen_iv(unsigned char* iv) {
 }
 
 int parse_arguments(int argc, char** argv, char* iface, char* fqdn) {
-    if (argc < PK_ARGC) return PK_ERR_INSUF_ARGS;
-    if (argc > PK_ARGC) return PK_ERR_EXTRA_ARGS;
+    if (argc < PK_ARGC) return PK_ERR_INSUF_LEN;
+    if (argc > PK_ARGC) return PK_ERR_EXTRA_LEN;
     if (strlen(argv[PK_ARGN_IFACE]) > PK_IFACE_MAX_LEN 
             || strlen(argv[PK_ARGN_FQDN]) > PK_FQDN_MAX_LEN)
                     return PK_ERR_BUF_OF; 
@@ -97,20 +102,43 @@ int get_netconfig(int sfd, char* iface, int* MTU,
     return 0;
 }
 
+int read_keyfile(unsigned char* key) {
+    FILE* key_file;
+    key_file = fopen(PK_FP_KEY, "r");
+    if (key_file == NULL) return PK_ERR_NP;
+    if (fread(key, sizeof(unsigned char), PK_KEY_BYTES, key_file) 
+            < PK_KEY_BYTES) {
+        fclose(key_file);
+        return PK_ERR_INSUF_LEN;
+    }
+    fclose(key_file);
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
     switch (parse_arguments(argc, argv, iface, host)) {
-        case PK_ERR_INSUF_ARGS:
+        case PK_ERR_INSUF_LEN:
             fprintf(stderr, "Insufficient arguments\n");
             fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
             exit(EXIT_FAILURE);
-        case PK_ERR_EXTRA_ARGS:
+        case PK_ERR_EXTRA_LEN:
             fprintf(stderr, "Too many arguments\n");
             fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
             exit(EXIT_FAILURE);
         case PK_ERR_BUF_OF:
             fprintf(stderr, "Argument length exceeds max\n");
+            exit(EXIT_FAILURE);
+    }
+
+    unsigned char key[PK_KEY_BYTES];
+    switch (read_keyfile(key)) {
+        case PK_ERR_NP:
+            fprintf(stderr, "Could not open key file\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_INSUF_LEN:
+            fprintf(stderr, "Key is not of sufficient length\n");
             exit(EXIT_FAILURE);
     }
     
@@ -155,20 +183,7 @@ int main(int argc, char** argv) {
 
     memset(datagram, 0, MTU);
 
-    unsigned char key[32];
-    FILE* key_file;
-    key_file = fopen("/etc/pk/pk_key", "r");
-    if (key_file == NULL) {
-        fprintf(stderr, "Could not open key file\n");
-        exit(EXIT_FAILURE);
-    }
-    if (fread(key, sizeof(unsigned char), 32, key_file) < 32) {
-        fprintf(stderr, "Keyfile contents too short\n");
-        fclose(key_file);
-        exit(EXIT_FAILURE);
-    }
-    fclose(key_file);
-
+    
     unsigned short ports[PK_MAX_PORTC];
     FILE* port_file;
     char* line = NULL;
