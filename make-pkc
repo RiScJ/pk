@@ -1,0 +1,1 @@
+gcc -I. pk.c pkc.c -Wall -Wextra -Werror -lcrypto -lresolv -o pkc
