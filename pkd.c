@@ -149,10 +149,6 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Argument length exceeds max\n");
             exit(EXIT_FAILURE);
     }
-    if (argc < 2) {
-        fprintf(stderr, "Must specify interface - aborting\n");
-        exit(EXIT_FAILURE);
-    }
     
     unsigned char key[32];
     FILE* key_file;
