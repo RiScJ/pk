@@ -1,23 +1,9 @@
-#include <arpa/inet.h>
-#include <errno.h>
+#include "pk.h"
+
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
-#include <openssl/conf.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <time.h>
-#include <unistd.h>
 
 #include "pk_err.h"
 #include "pk_defs.h"

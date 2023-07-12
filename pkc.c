@@ -1,20 +1,9 @@
-#include <arpa/inet.h>
+#include "pk.h"
+
 #include <arpa/nameser.h>
-#include <openssl/conf.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
 #include <openssl/rand.h>
 #include <resolv.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
 #include <netdb.h>
-#include <netinet/tcp.h>
-#include <netinet/ip.h>
-#include <unistd.h>
 
 #include "pk_err.h"
 #include "pk_defs.h"
