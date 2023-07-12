@@ -16,6 +16,8 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 
+#include "pk_err.h"
+
 #define NET_BYTES_PER_WORD 4
 
 #define PK_IFACE_MAX_LEN 128
@@ -30,18 +32,6 @@
 
 #define PK_FP_KEY "/etc/pk/pk_key"
 #define PK_FP_PORTS "/etc/pk/pk_ports"
-
-#define PK_ERR_INSUF_LEN 1
-#define PK_ERR_EXTRA_LEN 2
-#define PK_ERR_BUF_OF 3
-#define PK_ERR_NP 4
-#define PK_ERR_SOCK_NEW 5
-#define PK_ERR_SOCK_OPT 6
-#define PK_ERR_IFR_MTU 7
-#define PK_ERR_IFR_ADDR 8
-#define PK_ERR_CSPRNG 9
-#define PK_ERR_ENCRYPT 10
-#define PK_ERR_SEND 11
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
@@ -232,6 +222,7 @@ int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock) {
 int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd, 
         struct sockaddr_in dsock, unsigned char* key) {
     for (int i = 0; i < portc; i++) {
+        usleep(10000);
         int payload_err = get_payload(dgram, key);
         if (payload_err != 0) return payload_err;
         int set_dport_err = set_dport(dgram, &dsock, ports[i]);
