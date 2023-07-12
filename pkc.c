@@ -1,17 +1,5 @@
 #include "pk.h"
-
-#include <arpa/nameser.h>
-#include <openssl/rand.h>
-#include <resolv.h>
-#include <netdb.h>
-
-#include "pk_err.h"
-#include "pk_defs.h"
-
-#define NET_BYTES_PER_WORD 4
-
-#define PK_FP_KEY "/etc/pk/pk_key"
-#define PK_FP_PORTS "/etc/pk/pk_ports"
+#include "pkc.h"
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
