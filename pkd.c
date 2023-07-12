@@ -19,11 +19,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define PKD_FLUSH_INTERVAL 60
-#define PKD_MAX_RECV_ERRORS 10
-#define PKD_LIMIT_RECV_ERRORS
-#define PKD_MAX_PORTC 128
-#define iface_MAX_LEN 128
+#include "pk_err.h"
+#include "pk_defs.h"
 
 volatile sig_atomic_t running = true;
 
@@ -125,10 +122,20 @@ int decrypt(unsigned char* ctext, int ctext_len, unsigned char* key,
     return ptext_len;
 }
 
+int parse_arguments(int argc, char** argv, char* iface) {
+    if (argc < PKD_ARGC) return PK_ERR_INSUF_LEN;
+    if (argc < PKD_ARGC) return PK_ERR_EXTRA_LEN;
+    if (strlen(argv[PKD_ARGN_IFACE]) > PK_IFACE_MAX_LEN) {
+        return PK_ERR_BUF_OF;
+    }
+    strcpy(iface, argv[PKD_ARGN_IFACE]);
+    return 0;
+}
+
 int main(int argc, char** argv) {
     signal(SIGINT, handle_signal);
 
-    char iface[PKD_IFACE_MAX_LEN];
+    char iface[PK_IFACE_MAX_LEN];
     switch (parse_arguments(argc, argv, iface)) {
         case PK_ERR_INSUF_LEN:
             fprintf(stderr, "Insufficient arguments\n");
@@ -147,13 +154,6 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
     
-    char iface[iface_MAX_LEN];
-    if (strlen(argv[1]) > iface_MAX_LEN) {
-        fprintf(stderr, "Interface name too long\n");
-        exit(EXIT_FAILURE);
-    }
-    strcpy(iface, argv[1]);
-    
     unsigned char key[32];
     FILE* key_file;
     key_file = fopen("/etc/pk/pk_key", "r");
@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
 
     unsigned int iv_s = 16;
 
-    unsigned short ports[PKD_MAX_PORTC];
+    unsigned short ports[PK_MAX_PORTC];
     FILE* port_file;
     char* line = NULL;
     size_t len = 0;
