@@ -17,4 +17,10 @@
 #include <unistd.h>
 #include <time.h>
 
+#include "pk_err.h"
+#include "pk_defs.h"
+
+int read_keyfile(unsigned char* key);
+int read_portfile(unsigned short* ports, int* portc);
+
 #endif // PK_H

@@ -87,33 +87,6 @@ int get_netconfig(int sfd, char* iface, int* mtu,
     return 0;
 }
 
-int read_keyfile(unsigned char* key) {
-    FILE* key_file;
-    key_file = fopen(PK_FP_KEY, "r");
-    if (key_file == NULL) return PK_ERR_NP;
-    if (fread(key, sizeof(unsigned char), PK_KEY_BYTES, key_file) 
-            < PK_KEY_BYTES) {
-        fclose(key_file);
-        return PK_ERR_INSUF_LEN;
-    }
-    fclose(key_file);
-    return 0;
-}
-
-int read_portfile(unsigned short* ports, int* portc) {
-    FILE* port_file;
-    char* line = NULL;
-    size_t len = 0;
-    ssize_t read;
-    port_file = fopen(PK_FP_PORTS, "r");
-    if (port_file == NULL) return PK_ERR_NP;
-    while ((read = getline(&line, &len, port_file)) != -1) {
-        if (*portc == PK_MAX_PORTC) return PK_ERR_EXTRA_LEN;
-        ports[(*portc)++] = atoi(line);
-    }
-    return 0;
-}
-
 int init_datagram(in_addr_t saddr, in_addr_t daddr, int mtu, char* dgram, 
         struct iphdr* iph, struct tcphdr* tcph) { 
     iph = (struct iphdr*) dgram;
@@ -219,11 +192,11 @@ int main(int argc, char** argv) {
     switch (parse_arguments(argc, argv, iface, host)) {
         case PK_ERR_INSUF_LEN:
             fprintf(stderr, "Insufficient arguments\n");
-            fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
+            fprintf(stderr, "Usage: pkc [iface] [fqdn]\n");
             exit(EXIT_FAILURE);
         case PK_ERR_EXTRA_LEN:
             fprintf(stderr, "Too many arguments\n");
-            fprintf(stderr, "Usage: pk [iface] [fqdn]\n");
+            fprintf(stderr, "Usage: pkc [iface] [fqdn]\n");
             exit(EXIT_FAILURE);
         case PK_ERR_BUF_OF:
             fprintf(stderr, "Argument length exceeds max\n");
