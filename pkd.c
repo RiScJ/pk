@@ -128,6 +128,20 @@ int decrypt(unsigned char* ctext, int ctext_len, unsigned char* key,
 int main(int argc, char** argv) {
     signal(SIGINT, handle_signal);
 
+    char iface[PKD_IFACE_MAX_LEN];
+    switch (parse_arguments(argc, argv, iface)) {
+        case PK_ERR_INSUF_LEN:
+            fprintf(stderr, "Insufficient arguments\n");
+            fprintf(stderr, "Usage: pkd [iface]\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_EXTRA_LEN:
+            fprintf(stderr, "Too many arguments\n");
+            fprintf(stderr, "Usage: pkd [iface]\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_BUF_OF:
+            fprintf(stderr, "Argument length exceeds max\n");
+            exit(EXIT_FAILURE);
+    }
     if (argc < 2) {
         fprintf(stderr, "Must specify interface - aborting\n");
         exit(EXIT_FAILURE);

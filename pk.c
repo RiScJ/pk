@@ -17,18 +17,9 @@
 #include <unistd.h>
 
 #include "pk_err.h"
+#include "pk_defs.h"
 
 #define NET_BYTES_PER_WORD 4
-
-#define PK_IFACE_MAX_LEN 128
-#define PK_FQDN_MAX_LEN 128
-#define PK_MAX_PORTC 128
-#define PK_ARGC 3
-#define PK_ARGN_IFACE 1
-#define PK_ARGN_FQDN 2
-#define PK_KEY_BYTES 32
-#define PK_IV_BYTES 16
-#define PK_CIPHER_BYTES 128
 
 #define PK_FP_KEY "/etc/pk/pk_key"
 #define PK_FP_PORTS "/etc/pk/pk_ports"
@@ -58,14 +49,14 @@ int gen_iv(unsigned char* iv) {
 }
 
 int parse_arguments(int argc, char** argv, char* iface, char* fqdn) {
-    if (argc < PK_ARGC) return PK_ERR_INSUF_LEN;
-    if (argc > PK_ARGC) return PK_ERR_EXTRA_LEN;
-    if (strlen(argv[PK_ARGN_IFACE]) > PK_IFACE_MAX_LEN 
-            || strlen(argv[PK_ARGN_FQDN]) > PK_FQDN_MAX_LEN)
+    if (argc < PKC_ARGC) return PK_ERR_INSUF_LEN;
+    if (argc > PKC_ARGC) return PK_ERR_EXTRA_LEN;
+    if (strlen(argv[PKC_ARGN_IFACE]) > PK_IFACE_MAX_LEN 
+            || strlen(argv[PKC_ARGN_FQDN]) > PK_FQDN_MAX_LEN)
                     return PK_ERR_BUF_OF; 
     
-    strcpy(iface, argv[PK_ARGN_IFACE]);
-    strcpy(fqdn, argv[PK_ARGN_FQDN]);
+    strcpy(iface, argv[PKC_ARGN_IFACE]);
+    strcpy(fqdn, argv[PKC_ARGN_FQDN]);
     return 0;
 }
 
