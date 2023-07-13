@@ -24,5 +24,7 @@
 #define PKD_FLUSH_INTERVAL      60
 #define PKD_MAX_RECV_ERRORS     10
 #define PKD_LISTEN_LO
+#define PKD_FP_AUTH_SH          "/etc/pk/pk_auth"
+#define PKD_CALL_BYTES          128
 
 #endif // PK_DEFS_H

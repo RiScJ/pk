@@ -39,8 +39,7 @@ void* flush_conn_list(void* arg) {
     return NULL;
 }
 
-int get_conn_state(struct in_addr knocker, 
-                    __attribute__((unused)) struct conn_state** cs) {
+int get_conn_state(struct in_addr knocker, struct conn_state** cs) {
     pthread_mutex_lock(&conn_list_lock);
     struct conn_state* state;
     for (state = conn_list; state != NULL; state = state->next) {
@@ -65,13 +64,13 @@ int get_conn_state(struct in_addr knocker,
     return 0;
 }
 
-bool validate(unsigned char* d_msg) {
+bool validate(unsigned char* ptext) {
     unsigned long unixtime = time(NULL);
     int unixtime_s = snprintf(NULL, 0, "%ld", unixtime);
     unsigned char unixtime_str[unixtime_s];
     snprintf((char*)unixtime_str, unixtime_s, "%ld", unixtime);
 
-    if (strcmp((char*)unixtime_str, (char*)d_msg) == 0) return true;
+    if (strcmp((char*)unixtime_str, (char*)ptext) == 0) return true;
     return false;
 }
 
@@ -182,6 +181,12 @@ int get_data(char* packet, unsigned char* iv, unsigned char* ctext) {
     ctext[ctext_len] = '\0';
     
     return PK_SUCCESS;
+}
+
+void authorize(struct in_addr ip) {
+    char call[PKD_CALL_BYTES];
+    sprintf(call, PKD_FP_AUTH_SH " %s", inet_ntoa(ip));
+    system(call);
 }
 
 int main(int argc, char** argv) {
@@ -346,6 +351,7 @@ int main(int argc, char** argv) {
             printf("\n");
             if (state->index == portc) {
                 printf("[ \u2713 ] :: %s\n", inet_ntoa(state->ip));
+                authorize(state->ip);
                 state->index = 0;
             }
         } else {
