@@ -173,6 +173,10 @@ int get_data(char* packet, unsigned char* iv, unsigned char* ctext) {
             + PK_IV_BYTES);
     unsigned int ctext_len = len - ih_s - th_s 
             - PK_IV_BYTES;
+
+    if (ctext_len == 0) return PK_ERR_INSUF_LEN;
+    if (ctext_len >= PK_CIPHER_BYTES -1) return PK_ERR_EXTRA_LEN;
+
     strncpy((char*) iv, (char*) iv_p, PK_IV_BYTES);
     strncpy((char*) ctext, (char*) ctext_p, ctext_len);
     ctext[ctext_len] = '\0';
@@ -234,7 +238,8 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
 
-    struct sockaddr_ll sll;
+    struct sockaddr_ll sll; 
+    #ifndef PKD_LISTEN_LO
     switch (bind_socket(sockfd, iface, &sll)) {
         case PK_ERR_IFR_INDEX:
             fprintf(stderr, "Error getting interface index\n");
@@ -243,6 +248,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Error binding socket to interface\n");
             exit(EXIT_FAILURE);
     }
+    #endif
     socklen_t saddr_s = sizeof(struct sockaddr);
 
     char packet[mtu];
@@ -293,12 +299,6 @@ int main(int argc, char** argv) {
         unsigned int ctext_len = tot_len - iphdr_s - tcphdr_s 
                 - PK_IV_BYTES;
 
-        unsigned char iv[PK_IV_BYTES];
-        unsigned char ctext[PK_CIPHER_BYTES];
-        switch (get_data(packet, iv, ctext)) {
-    
-        }        
-
         struct in_addr knocker;
         knocker.s_addr = iph->saddr;
         
@@ -308,26 +308,33 @@ int main(int argc, char** argv) {
             pthread_mutex_destroy(&conn_list_lock);
             exit(EXIT_FAILURE);
         }
-
         printf("[SYN] :: %-15s :: %5d :: ", inet_ntoa(state->ip), 
-                                            ntohs(tcph->dest));
+                ntohs(tcph->dest));
         
-        if (ntohs(tcph->dest) == ports[state->index]) {    
-            if (ctext_len == 0) {
+        unsigned char iv[PK_IV_BYTES];
+        unsigned char ctext[PK_CIPHER_BYTES];
+        switch (get_data(packet, iv, ctext)) {
+            case PK_ERR_INSUF_LEN:
                 state->index = 0;
                 printf("\u2717\n");
                 continue;
-            }
-            unsigned char d_msg[128];
-            int d_msg_s = decrypt(ctext, (int) ctext_len, key, iv, d_msg);
-            if (d_msg_s == -1) {
+            case PK_ERR_EXTRA_LEN:
+                state->index = 0;
+                printf("\u2717\n");
+                continue;
+        }
+        
+        if (ntohs(tcph->dest) == ports[state->index]) {    
+            unsigned char ptext[PK_CIPHER_BYTES];
+            int ptext_len = decrypt(ctext, (int) ctext_len, key, iv, ptext);
+            if (ptext_len == -1) {
                 ERR_print_errors_fp(stderr);
                 printf("\n");
                 fprintf(stderr, "Bad decrypt - resetting...\n");
                 state->index = 0;
                 continue;
             }
-            if (!validate(d_msg)) {
+            if (!validate(ptext)) {
                 state->index = 0;
                 printf("\u2717\n");
                 continue;

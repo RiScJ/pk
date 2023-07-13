@@ -23,7 +23,6 @@
 #define PKD_ARGN_IFACE          1
 #define PKD_FLUSH_INTERVAL      60
 #define PKD_MAX_RECV_ERRORS     10
-#define PKD_LIMIT_RECV_ERRORS
-
+#define PKD_LISTEN_LO
 
 #endif // PK_DEFS_H
