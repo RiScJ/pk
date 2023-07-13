@@ -1,4 +1,5 @@
 #include "pk.h"
+#include "pkd.h"
 
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
@@ -13,13 +14,6 @@ volatile sig_atomic_t running = true;
 void handle_signal(int signal) {
     if (signal == SIGINT) running = false;
 }
-
-struct conn_state {
-    struct in_addr ip;
-    int index;
-    time_t when;
-    struct conn_state* next;
-};
 
 struct conn_state* conn_list = NULL;
 
