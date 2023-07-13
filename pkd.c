@@ -145,31 +145,38 @@ int monitor_recv_errors(int data_s, int* recv_errors) {
     return PK_SUCCESS;
 }
 
-int unpack(char* packet, struct iphdr** iph, struct tcphdr** tcph, 
-        unsigned char* iv, unsigned char* ctext) {
+int get_headers(char* packet, struct iphdr** iph, struct tcphdr** tcph) { 
     unsigned int eh_s = sizeof(struct ethhdr);
     
     *iph = (struct iphdr*) (packet + eh_s);
     unsigned int ih_s = (*iph)->ihl * 4;    
 
     *tcph = (struct tcphdr*) (packet + eh_s + ih_s);
-    unsigned int th_s = (*tcph)->doff * 4;
-    
-    unsigned char* iv_p;
-    iv_p = (unsigned char*) (packet + eh_s + ih_s + th_s);
-    memcpy(iv, iv_p, PK_IV_BYTES);
-
-    unsigned int ctext_len = (*iph)->tot_len - ih_s - th_s - PK_IV_BYTES;
-
-    unsigned char* ctext_p;
-    ctext_p = (unsigned char*) (packet + eh_s + ih_s + th_s + PK_IV_BYTES);
-    memcpy(ctext, ctext_p, ctext_len);
-    ctext[ctext_len] = '\0';
     
     if (*iph == NULL || *tcph == NULL) {
         return PK_ERR_NP;
     }
 
+    return PK_SUCCESS;
+}
+
+int get_data(char* packet, unsigned char* iv, unsigned char* ctext) {
+    unsigned int eh_s = sizeof(struct ethhdr);
+    unsigned int ih_s = sizeof(struct iphdr);
+    unsigned int th_s = sizeof(struct tcphdr);
+
+    struct iphdr* iph = (struct iphdr*) (packet + eh_s);
+    unsigned int len = ntohs(iph->tot_len);
+
+    unsigned char* iv_p = (unsigned char*) (packet + eh_s + ih_s + th_s);
+    unsigned char* ctext_p = (unsigned char*) (packet + eh_s + ih_s + th_s 
+            + PK_IV_BYTES);
+    unsigned int ctext_len = len - ih_s - th_s 
+            - PK_IV_BYTES;
+    strncpy((char*) iv, (char*) iv_p, PK_IV_BYTES);
+    strncpy((char*) ctext, (char*) ctext_p, ctext_len);
+    ctext[ctext_len] = '\0';
+    
     return PK_SUCCESS;
 }
 
@@ -271,21 +278,26 @@ int main(int argc, char** argv) {
 
         struct iphdr* iph = NULL;
         struct tcphdr* tcph = NULL;
-        unsigned char iv[PK_IV_BYTES];
-        unsigned char ctext[PK_CIPHER_BYTES];
-        switch (unpack(packet, &iph, &tcph, iv, ctext)) {
+        switch (get_headers(packet, &iph, &tcph)) {
             case PK_ERR_NP:
-                fprintf(stderr, "Unable to unpack packet\n");
+                fprintf(stderr, "Unable to get headers\n");
                 continue;
         }
-        unsigned int iphdr_s = iph->ihl * 4;
-        unsigned int tcphdr_s = tcph->doff * 4;
-        unsigned int ctext_len = iph->tot_len - iphdr_s - tcphdr_s 
-                - PK_IV_BYTES;
-      
-        if ( iph->protocol != IPPROTO_TCP) continue;
+        if (iph->protocol != IPPROTO_TCP) continue;
         if ( tcph->ack) continue;
         if (!tcph->syn) continue;
+       
+        unsigned int iphdr_s = iph->ihl * 4;
+        unsigned int tcphdr_s = tcph->doff * 4;
+        unsigned int tot_len = ntohs(iph->tot_len);
+        unsigned int ctext_len = tot_len - iphdr_s - tcphdr_s 
+                - PK_IV_BYTES;
+
+        unsigned char iv[PK_IV_BYTES];
+        unsigned char ctext[PK_CIPHER_BYTES];
+        switch (get_data(packet, iv, ctext)) {
+    
+        }        
 
         struct in_addr knocker;
         knocker.s_addr = iph->saddr;

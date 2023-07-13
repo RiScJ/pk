@@ -1,1 +1,1 @@
-gcc -I. pk.c pkd.c -Wall -Wextra -Werror -lcrypto -o pkd
+gcc -g -I. pk.c pkd.c -Wall -Wextra -Werror -lcrypto -o pkd

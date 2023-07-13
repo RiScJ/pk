@@ -17,5 +17,6 @@
 #define PK_ERR_SEND         13
 #define PK_ERR_RECV         14
 #define PK_ERR_RECV_MAX     15
+#define PK_ERR_INVAL        16
 
 #endif // PK_ERR_H
