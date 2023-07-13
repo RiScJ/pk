@@ -1,14 +1,6 @@
 #include "pk.h"
 #include "pkd.h"
 
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <pthread.h>
-#include <signal.h>
-
-#include "pk_err.h"
-#include "pk_defs.h"
-
 volatile sig_atomic_t running = true;
 
 void handle_signal(int signal) {
@@ -109,7 +101,76 @@ int parse_arguments(int argc, char** argv, char* iface) {
         return PK_ERR_BUF_OF;
     }
     strcpy(iface, argv[PKD_ARGN_IFACE]);
-    return 0;
+    return PK_SUCCESS;
+}
+
+int init_socket(int* sockfd) {
+    *sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+    if (*sockfd == -1) return PK_ERR_SOCK_NEW;
+    return PK_SUCCESS;
+}
+
+int get_netconfig(int sfd, char* iface, int* mtu) {
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
+    *mtu = ifr.ifr_mtu;
+    return PK_SUCCESS;
+}
+
+int bind_socket(int sfd, char* iface, struct sockaddr_ll* sll) {
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sfd, SIOCGIFINDEX, &ifr) == -1) return PK_ERR_IFR_INDEX;
+    memset(sll, 0, sizeof(*sll));
+    sll->sll_family = AF_PACKET;
+    sll->sll_protocol = htons(ETH_P_ALL);
+    sll->sll_ifindex = ifr.ifr_ifindex;
+    if (bind(sfd, (struct sockaddr*) sll, sizeof(*sll)) == -1) {
+        return PK_ERR_SOCK_BIND;
+    }
+    return PK_SUCCESS;
+}
+
+int monitor_recv_errors(int data_s, int* recv_errors) {
+    if (data_s == -1) {
+        fprintf(stderr, "Packet recieve error\n");
+        (*recv_errors)++;
+        if (*recv_errors > PKD_MAX_RECV_ERRORS) return PK_ERR_RECV_MAX;
+        return PK_ERR_RECV;
+    }
+    *recv_errors = 0;
+    return PK_SUCCESS;
+}
+
+int unpack(char* packet, struct iphdr** iph, struct tcphdr** tcph, 
+        unsigned char* iv, unsigned char* ctext) {
+    unsigned int eh_s = sizeof(struct ethhdr);
+    
+    *iph = (struct iphdr*) (packet + eh_s);
+    unsigned int ih_s = (*iph)->ihl * 4;    
+
+    *tcph = (struct tcphdr*) (packet + eh_s + ih_s);
+    unsigned int th_s = (*tcph)->doff * 4;
+    
+    unsigned char* iv_p;
+    iv_p = (unsigned char*) (packet + eh_s + ih_s + th_s);
+    memcpy(iv, iv_p, PK_IV_BYTES);
+
+    unsigned int ctext_len = (*iph)->tot_len - ih_s - th_s - PK_IV_BYTES;
+
+    unsigned char* ctext_p;
+    ctext_p = (unsigned char*) (packet + eh_s + ih_s + th_s + PK_IV_BYTES);
+    memcpy(ctext, ctext_p, ctext_len);
+    ctext[ctext_len] = '\0';
+    
+    if (*iph == NULL || *tcph == NULL) {
+        return PK_ERR_NP;
+    }
+
+    return PK_SUCCESS;
 }
 
 int main(int argc, char** argv) {
@@ -130,143 +191,123 @@ int main(int argc, char** argv) {
             exit(EXIT_FAILURE);
     }
     
-    unsigned char key[32];
-    FILE* key_file;
-    key_file = fopen("/etc/pk/pk_key", "r");
-    if (key_file == NULL) {
-        fprintf(stderr, "Could not open key file\n");
-        exit(EXIT_FAILURE);
+    unsigned char key[PK_KEY_BYTES];
+    switch (read_keyfile(key)) {
+        case PK_ERR_NP:
+            fprintf(stderr, "Could not open key file\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_INSUF_LEN:
+            fprintf(stderr, "Key is not of sufficient length\n");
+            exit(EXIT_FAILURE);
     }
-    if (fread(key, sizeof(unsigned char), 32, key_file) < 32) {
-        fprintf(stderr, "Key file contents too short\n");
-        fclose(key_file);
-        exit(EXIT_FAILURE);
-    }
-    fclose(key_file);    
-
-    unsigned int iv_s = 16;
 
     unsigned short ports[PK_MAX_PORTC];
-    FILE* port_file;
-    char* line = NULL;
-    size_t len = 0;
-    ssize_t read;
-    port_file = fopen("/etc/pk/pk_ports", "r");
-    if (port_file == NULL) {
-        perror("Unable to open port file\n");
-        exit(EXIT_FAILURE);
-    }
     int portc = 0;
-    while ((read = getline(&line, &len, port_file)) != -1) {
-        ports[portc++] = atoi(line);
+    switch (read_portfile(ports, &portc)) {
+        case PK_ERR_NP:
+            fprintf(stderr, "Unable to open port file\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_EXTRA_LEN:
+            fprintf(stderr, "More ports specified than max - ignoring "
+                    "extras\n");
+            break;
     }
 
-    int sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-    if (sockfd == -1) {
-        perror("Error opening socket\n");
-        exit(EXIT_FAILURE);
+    int sockfd = 0;
+    switch (init_socket(&sockfd)) {
+        case PK_ERR_SOCK_NEW:
+            fprintf(stderr, "Error opening socket\n");
+            exit(EXIT_FAILURE);
     }
 
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(sockfd, SIOCGIFMTU, &ifr) == -1) {
-        perror("Error getting MTU\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
+    int mtu = 0;
+    switch (get_netconfig(sockfd, iface, &mtu)) {
+        case PK_ERR_IFR_MTU:
+            fprintf(stderr, "Cannot get interface mtu\n");
+            exit(EXIT_FAILURE);
     }
-    int MTU = ifr.ifr_mtu;
-/*    
-    if (ioctl(sockfd, SIOCGIFINDEX, &ifr) == -1) {
-        perror("Error getting interface index\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
-    }
+
     struct sockaddr_ll sll;
-    memset(&sll, 0, sizeof(sll));
-    sll.sll_family = AF_PACKET;
-    sll.sll_protocol = htons(ETH_P_ALL);
-    sll.sll_ifindex = ifr.ifr_ifindex;
-
-    if (bind(sockfd, (struct sockaddr*) &sll, sizeof(sll)) == -1) {
-        perror("Error binding socket to interface\n");
-        close(sockfd);
-        exit(EXIT_FAILURE);
+    switch (bind_socket(sockfd, iface, &sll)) {
+        case PK_ERR_IFR_INDEX:
+            fprintf(stderr, "Error getting interface index\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_SOCK_BIND:
+            fprintf(stderr, "Error binding socket to interface\n");
+            exit(EXIT_FAILURE);
     }
-*/
-    char packet[MTU];
-    struct sockaddr saddr;
-    unsigned int saddr_s = sizeof(saddr);
-    unsigned int ethhdr_s = sizeof(struct ethhdr);
+    socklen_t saddr_s = sizeof(struct sockaddr);
+
+    char packet[mtu];
 
     if (pthread_mutex_init(&conn_list_lock, NULL) != 0) {
-        printf("Mutex init failed\n");
+        fprintf(stderr, "Mutex init failed\n");
         exit(EXIT_FAILURE);
     }
     
     pthread_t flush_thread;
     if (pthread_create(&flush_thread, NULL, flush_conn_list, NULL) != 0) {
-        perror("Error creating flush thread\n");
+        fprintf(stderr, "Error creating flush thread\n");
         close(sockfd);
         pthread_mutex_destroy(&conn_list_lock);
         exit(EXIT_FAILURE);
     }
     
-    #ifdef PKD_LIMIT_RECV_ERRORS
     int recv_errors = 0;
-    #endif
     while (running) {
-        int data_s = recvfrom(sockfd, packet, MTU, 0, &saddr, &saddr_s);
-        if (data_s == -1) {
-            perror("Packet recieve error\n");
-            #ifdef PKD_LIMIT_RECV_ERRORS
-            recv_errors++;
-            if (recv_errors > PKD_MAX_RECV_ERRORS) {
+        int data_s = recvfrom(sockfd, packet, mtu, 0, 
+                (struct sockaddr*) &sll, &saddr_s);
+
+        switch (monitor_recv_errors(data_s, &recv_errors)) {
+            case PK_ERR_RECV_MAX:
                 fprintf(stderr, "Exceeded max consecutive recieve "
-                        "errors\n");    
+                        "errors\n");
                 close(sockfd);
                 pthread_mutex_destroy(&conn_list_lock);
-                exit(EXIT_FAILURE);    
-            }
-            #endif
-            continue;
+                exit(EXIT_FAILURE);
+            case PK_ERR_RECV:
+                continue;
         }
-        recv_errors = 0;
-        struct iphdr* iph = (struct iphdr*)(packet + ethhdr_s);
-        if (iph->protocol != IPPROTO_TCP) continue;
-        unsigned int iphdr_s = iph->ihl * 4;
-        struct tcphdr* tcph = (struct tcphdr*) (packet + iphdr_s 
-                + ethhdr_s);
-        unsigned int tcphdr_s = tcph->doff * 4;
 
+        struct iphdr* iph = NULL;
+        struct tcphdr* tcph = NULL;
+        unsigned char iv[PK_IV_BYTES];
+        unsigned char ctext[PK_CIPHER_BYTES];
+        switch (unpack(packet, &iph, &tcph, iv, ctext)) {
+            case PK_ERR_NP:
+                fprintf(stderr, "Unable to unpack packet\n");
+                continue;
+        }
+        unsigned int iphdr_s = iph->ihl * 4;
+        unsigned int tcphdr_s = tcph->doff * 4;
+        unsigned int ctext_len = iph->tot_len - iphdr_s - tcphdr_s 
+                - PK_IV_BYTES;
+      
+        if ( iph->protocol != IPPROTO_TCP) continue;
         if ( tcph->ack) continue;
         if (!tcph->syn) continue;
 
         struct in_addr knocker;
         knocker.s_addr = iph->saddr;
+        
         struct conn_state* state = NULL;
         if (get_conn_state(knocker, &state) == -1) {
             close(sockfd);
             pthread_mutex_destroy(&conn_list_lock);
             exit(EXIT_FAILURE);
         }
+
         printf("[SYN] :: %-15s :: %5d :: ", inet_ntoa(state->ip), 
                                             ntohs(tcph->dest));
-        if (ntohs(tcph->dest) == ports[state->index]) {
-            
-            unsigned char* e_msg = (unsigned char*) (packet + ethhdr_s 
-                    + iphdr_s + tcphdr_s + iv_s);
-            unsigned int e_msg_s = ntohs(iph->tot_len) - iphdr_s 
-                    - tcphdr_s - iv_s;
-            if (e_msg_s == 0) {
+        
+        if (ntohs(tcph->dest) == ports[state->index]) {    
+            if (ctext_len == 0) {
                 state->index = 0;
                 printf("\u2717\n");
                 continue;
             }
-            unsigned char* iv = (unsigned char*) (packet + ethhdr_s 
-                    + iphdr_s + tcphdr_s);
             unsigned char d_msg[128];
-            int d_msg_s = decrypt(e_msg, (int) e_msg_s, key, iv, d_msg);
+            int d_msg_s = decrypt(ctext, (int) ctext_len, key, iv, d_msg);
             if (d_msg_s == -1) {
                 ERR_print_errors_fp(stderr);
                 printf("\n");
