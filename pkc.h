@@ -64,7 +64,7 @@ int init_socket(int* sockfd);
  * @param[out] mtu Maximum transmissible unit for the interface
  * @param[out] s_addr IPv4 address for the interface
  */
-int get_netconfig(int sfd, char* iface, int* mtu, in_addr_t* s_addr);
+//int get_netconfig(int sfd, char* iface, int* mtu, in_addr_t* s_addr);
 
 /**
  * @brief Initializes the raw IP packet which will be transmitted
@@ -131,8 +131,12 @@ int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock);
  * @param[in] sockfd Socket file descriptor
  * @param[in] dsock Destination socket address
  * @param[in] key Key which will be used to encrypt the packet payload
+ * @param[in] lsfd File descriptor for socket to listen for response on
+ * @param[in] lsock Address of listening socket
+ * @param[in] mtu Network interface MTU
  */
 int knock_ports(unsigned short* ports, int portc, char* dgram, 
-        int sockfd, struct sockaddr_in dsock, unsigned char* key);
+        int sockfd, struct sockaddr_in dsock, unsigned char* key, 
+        int lsfd, struct sockaddr_in* lsock, int mtu);
 
 #endif // PKC_H

@@ -60,21 +60,6 @@ int init_socket(int* sockfd) {
     return 0;
 }
 
-int get_netconfig(int sfd, char* iface, int* mtu, 
-        in_addr_t* s_addr) {
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
-    *mtu = ifr.ifr_mtu;
-    ifr.ifr_addr.sa_family = AF_INET;
-    if (ioctl(sfd, SIOCGIFADDR, &ifr) == -1) return PK_ERR_IFR_ADDR;
-    struct sockaddr_in* sin;
-    sin = (struct sockaddr_in*) &ifr.ifr_addr;
-    *s_addr = sin->sin_addr.s_addr;
-    return 0;
-}
-
 int init_datagram(in_addr_t saddr, in_addr_t daddr, int mtu, char* dgram, 
         struct iphdr* iph, struct tcphdr* tcph) { 
     iph = (struct iphdr*) dgram;
@@ -161,17 +146,61 @@ int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock) {
 }
 
 int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd, 
-        struct sockaddr_in dsock, unsigned char* key) {
-    for (int i = 0; i < portc; i++) {
-        usleep(10000);
-        int payload_err = get_payload(dgram, key);
-        if (payload_err != 0) return payload_err;
-        int set_dport_err = set_dport(dgram, &dsock, ports[i]);
-        if (set_dport_err != 0) return set_dport_err;
-        int send_err = send_packet(sockfd, dgram, dsock);
-        if (send_err != 0) return send_err;
+        struct sockaddr_in dsock, unsigned char* key, int lsfd, 
+        struct sockaddr_in* lsock, int mtu) {
+    while (true) {
+        printf("knock ");
+        fflush(stdout);
+        for (int i = 0; i < portc; i++) {
+            usleep(PKC_DELAY_PACKET);
+            int payload_err = get_payload(dgram, key);
+            if (payload_err != 0) return payload_err;
+            int set_dport_err = set_dport(dgram, &dsock, ports[i]);
+            if (set_dport_err != 0) return set_dport_err;
+            int send_err = send_packet(sockfd, dgram, dsock);
+            if (send_err != 0) return send_err;
+        }
+        char packet[mtu];
+        socklen_t saddr_s = sizeof(struct sockaddr_in);
+        int data_s = recvfrom(lsfd, packet, mtu, 0, (struct sockaddr*) 
+                &lsock, &saddr_s);
+        if (data_s != 0) {
+            struct iphdr* iph = (struct iphdr*) packet 
+                    + sizeof(struct ethhdr);
+            struct tcphdr* tcph = (struct tcphdr*) packet 
+                    + sizeof(struct ethhdr) + sizeof(struct iphdr);
+            struct in_addr src;
+            src.s_addr = iph->saddr;
+            if (tcph->dest == ntohs(PKC_LSOCK_PORT)) { }
+                printf("%s\n", inet_ntoa(src));
+            //}
+        }
+        sleep(PKC_DELAY_RETRY);
     }
-    return 0;
+    return PK_SUCCESS;
+}
+
+int init_listsock(int* sockfd, struct sockaddr_in** lsock) {
+    *sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (*sockfd == -1) return PK_ERR_SOCK_NEW;
+    struct sockaddr_in saddr;
+    saddr.sin_family = AF_INET;
+    saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    saddr.sin_port = htons(PKC_LSOCK_PORT);
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, 
+            sizeof(timeout)) < 0) {
+        return PK_ERR_SOCK_OPT;
+    }
+    if (bind(*sockfd, (struct sockaddr*) &saddr, sizeof(saddr)) == -1) {
+        return PK_ERR_SOCK_BIND;
+    }
+    *lsock = malloc(sizeof(struct sockaddr_in));
+    if (*lsock == NULL) return PK_ERR_NP;
+    memcpy(*lsock, &saddr, sizeof(lsock));
+    return PK_SUCCESS;
 }
 
 int main(int argc, char** argv) {
@@ -248,8 +277,23 @@ int main(int argc, char** argv) {
 
     struct sockaddr_in dsock;
     init_destsock(&dsock, daddr);
+  
+    int lsfd;
+    struct sockaddr_in* lsock = NULL;
+    switch (init_listsock(&lsfd, &lsock)) {
+        case PK_ERR_SOCK_NEW:
+            fprintf(stderr, "Failed to create listening socket\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_SOCK_OPT:
+            fprintf(stderr, "Failed to set socket timeout\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_SOCK_BIND:
+            fprintf(stderr, "Failed to bind listening socket\n");
+            exit(EXIT_FAILURE);
+    }
     
-    switch (knock_ports(ports, portc, dgram, sockfd, dsock, key)) {
+    switch (knock_ports(ports, portc, dgram, sockfd, dsock, key, lsfd, 
+            lsock, mtu)) {
         case PK_ERR_CSPRNG:
             fprintf(stderr, "Failed to generate IV\n");
             exit(EXIT_FAILURE);

@@ -26,3 +26,17 @@ int read_portfile(unsigned short* ports, int* portc) {
     }
     return PK_SUCCESS;
 }
+
+int get_netconfig(int sfd, char* iface, int* mtu, in_addr_t* s_addr) {
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
+    *mtu = ifr.ifr_mtu;
+    ifr.ifr_addr.sa_family = AF_INET;
+    if (ioctl(sfd, SIOCGIFADDR, &ifr) == -1) return PK_ERR_IFR_ADDR;
+    struct sockaddr_in* sin;
+    sin = (struct sockaddr_in*) &ifr.ifr_addr;
+    *s_addr = sin->sin_addr.s_addr;
+    return PK_SUCCESS;
+}

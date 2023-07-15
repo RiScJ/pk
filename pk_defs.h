@@ -18,6 +18,9 @@
 #define PKC_ARGC                3
 #define PKC_ARGN_IFACE          1
 #define PKC_ARGN_FQDN           2
+#define PKC_DELAY_PACKET        10000
+#define PKC_DELAY_RETRY         1
+#define PKC_LSOCK_PORT          12345
 
 #define PKD_ARGC                2
 #define PKD_ARGN_IFACE          1
@@ -26,5 +29,7 @@
 #define PKD_LISTEN_LO
 #define PKD_FP_AUTH_SH          "/etc/pk/pk_auth"
 #define PKD_CALL_BYTES          128
+#define PKD_RESP_BYTES          1028
+#define PKD_DELAY_AUTH          100000
 
 #endif // PK_DEFS_H

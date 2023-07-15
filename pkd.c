@@ -109,15 +109,6 @@ int init_socket(int* sockfd) {
     return PK_SUCCESS;
 }
 
-int get_netconfig(int sfd, char* iface, int* mtu) {
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
-    if (ioctl(sfd, SIOCGIFMTU, &ifr) == -1) return PK_ERR_IFR_MTU;
-    *mtu = ifr.ifr_mtu;
-    return PK_SUCCESS;
-}
-
 int bind_socket(int sfd, char* iface, struct sockaddr_ll* sll) {
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
@@ -183,10 +174,65 @@ int get_data(char* packet, unsigned char* iv, unsigned char* ctext) {
     return PK_SUCCESS;
 }
 
-void authorize(struct in_addr ip) {
+int authorize(struct in_addr ip, in_addr_t saddr) {
+    usleep(PKD_DELAY_AUTH);
+    in_addr_t daddr = ip.s_addr;
+
+    int rsfd = socket(PF_INET, SOCK_RAW, IPPROTO_TCP);
+    char dgram[PKD_RESP_BYTES];
+    
+    struct iphdr* iph = (struct iphdr*) dgram;
+    struct tcphdr* tcph = (struct tcphdr*) (dgram + sizeof(struct iphdr));
+    memset(dgram, 0, PKD_RESP_BYTES);
+
+    char* data = dgram + sizeof(struct iphdr) + sizeof(struct tcphdr);
+    strcpy(data, "");
+
+    struct sockaddr_in sin;
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons(PKC_LSOCK_PORT);
+    sin.sin_addr.s_addr = saddr;
+
+    tcph->source = htons(PKC_LSOCK_PORT);
+    tcph->seq = 0;
+    tcph->ack_seq = 0;
+    tcph->res1 = 0;
+    tcph->doff = sizeof(struct tcphdr) / NET_BYTES_PER_WORD;
+    tcph->fin = 0;
+    tcph->syn = 0;
+    tcph->rst = 0;
+    tcph->psh = 0;
+    tcph->ack = 0;
+    tcph->urg = 0;
+    tcph->window = htonl(32767);
+    tcph->check = 0;
+    tcph->urg_ptr = 0;
+
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->id = htonl(54321);
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_TCP;
+    iph->check = 0;
+    iph->tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr);
+    iph->saddr = saddr;
+    iph->daddr = daddr;
+
+    if (setsockopt(rsfd, IPPROTO_IP, IP_HDRINCL, &sin, sizeof(sin)) < 0) {
+        return PK_ERR_SOCK_OPT;
+    }
+
+    if(sendto(rsfd, dgram, iph->tot_len, 0, (struct sockaddr*) &sin, 
+            sizeof(sin)) == -1) {
+        return PK_ERR_SEND;
+    }
+    printf("Auth resp sent\n");
+
     char call[PKD_CALL_BYTES];
     sprintf(call, PKD_FP_AUTH_SH " %s", inet_ntoa(ip));
     system(call);
+    return PK_SUCCESS;
 }
 
 int main(int argc, char** argv) {
@@ -237,9 +283,13 @@ int main(int argc, char** argv) {
     }
 
     int mtu = 0;
-    switch (get_netconfig(sockfd, iface, &mtu)) {
+    in_addr_t rsaddr = 0;
+    switch (get_netconfig(sockfd, iface, &mtu, &rsaddr)) {
         case PK_ERR_IFR_MTU:
             fprintf(stderr, "Cannot get interface mtu\n");
+            exit(EXIT_FAILURE);
+        case PK_ERR_IFR_ADDR:
+            fprintf(stderr, "Cannot get interface address\n");
             exit(EXIT_FAILURE);
     }
 
@@ -331,7 +381,8 @@ int main(int argc, char** argv) {
         
         if (ntohs(tcph->dest) == ports[state->index]) {    
             unsigned char ptext[PK_CIPHER_BYTES];
-            int ptext_len = decrypt(ctext, (int) ctext_len, key, iv, ptext);
+            int ptext_len = decrypt(ctext, (int) ctext_len, key, iv, 
+                    ptext);
             if (ptext_len == -1) {
                 ERR_print_errors_fp(stderr);
                 printf("\n");
@@ -351,7 +402,14 @@ int main(int argc, char** argv) {
             printf("\n");
             if (state->index == portc) {
                 printf("[ \u2713 ] :: %s\n", inet_ntoa(state->ip));
-                authorize(state->ip);
+                switch (authorize(state->ip, rsaddr)) {
+                    case PK_ERR_SOCK_OPT:
+                        fprintf(stderr, "Could not set socket options\n");
+                        continue;
+                    case PK_ERR_SEND:
+                        fprintf(stderr, "Could not send auth ack\n");
+                        continue;
+                }
                 state->index = 0;
             }
         } else {

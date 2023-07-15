@@ -8,6 +8,8 @@
 #define PK_H
 
 #include <arpa/inet.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
@@ -46,5 +48,15 @@ int read_keyfile(unsigned char* key);
  * @param[out] portc Number of ports to knock
  */
 int read_portfile(unsigned short* ports, int* portc);
+
+/**
+ * @brief Retrieves configuration for a specified network interface
+ *
+ * @param[in] sfd Socket file descriptor
+ * @param[in] iface Network interface name
+ * @param[out] mtu Maximum transmissible unit for the interface
+ * @param[out] s_addr IPv4 address for the interface
+ */
+int get_netconfig(int sfd, char* iface, int* mtu, in_addr_t* s_addr);
 
 #endif // PK_H

@@ -7,8 +7,6 @@
 #ifndef PKD_H
 #define PKD_H
 
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
 #include <pthread.h>
 #include <signal.h>
 
@@ -85,7 +83,7 @@ int init_socket(int* sockfd);
  * @param[in] iface Network interface name
  * @param[out] mtu Maximum transmissible unit for the interface
  */
-int get_netconfig(int sfd, char* iface, int* mtu);
+//int get_netconfig(int sfd, char* iface, int* mtu);
 
 /**
  * @brief Binds a socket to the given interface
@@ -126,7 +124,8 @@ int get_data(char* packet, unsigned char* iv, unsigned char* ctext);
  * @brief Calls a script to be run when a knocker successfully validates
  *
  * @param[in] ip IP address of the authorized knocker
+ * @param[in] src IP address of server
  */
-void authorize(struct in_addr ip);
+int authorize(struct in_addr ip, in_addr_t src);
 
 #endif // PKD_H

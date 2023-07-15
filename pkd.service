@@ -1,0 +1,9 @@
+[Unit]
+Description=Monitors incoming TCP packets, waiting for a secret
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pkd ens18
+
+[Install]
+WantedBy=multi-user.target
