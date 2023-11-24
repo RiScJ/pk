@@ -1,6 +1,6 @@
 #include "pk.h"
 #include "pkc.h"
-
+#include <ctype.h>
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
     EVP_CIPHER_CTX* ctx;
@@ -161,17 +161,17 @@ int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd,
             if (send_err != 0) return send_err;
         }
         char packet[mtu];
-        socklen_t saddr_s = sizeof(struct sockaddr_in);
+        socklen_t saddr_s = sizeof(struct sockaddr_in); 
         int data_s = recvfrom(lsfd, packet, mtu, 0, (struct sockaddr*) 
                 &lsock, &saddr_s);
+
         if (data_s > 0) {
-            struct iphdr* iph = (struct iphdr*) packet 
-                    + sizeof(struct ethhdr);
+            struct iphdr* iph = (struct iphdr*) packet; 
             struct tcphdr* tcph = (struct tcphdr*) packet 
-                    + sizeof(struct ethhdr) + sizeof(struct iphdr);
+                    + sizeof(struct iphdr);
             struct in_addr src;
             src.s_addr = iph->saddr;
-            printf("%d\n", ntohs(tcph->dest));
+            printf("%d\n", tcph->dest);
             printf("%s\n", inet_ntoa(src));
             if (ntohs(tcph->dest) == PKC_LSOCK_PORT) {
                 printf("%s\n", inet_ntoa(src));
@@ -191,7 +191,7 @@ int init_listsock(int* sockfd, struct sockaddr_in** lsock) {
     saddr.sin_addr.s_addr = htonl(INADDR_ANY);
     saddr.sin_port = htons(PKC_LSOCK_PORT);
     struct timeval timeout;
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 4;
     timeout.tv_usec = 0;
     if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, 
             sizeof(timeout)) < 0) {

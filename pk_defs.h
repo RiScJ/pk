@@ -18,7 +18,7 @@
 #define PKC_ARGC                3
 #define PKC_ARGN_IFACE          1
 #define PKC_ARGN_FQDN           2
-#define PKC_DELAY_PACKET        1000
+#define PKC_DELAY_PACKET        100000
 #define PKC_DELAY_RETRY         5
 #define PKC_LSOCK_PORT          12345
 
