@@ -136,7 +136,6 @@ int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock);
  * @param[in] mtu Network interface MTU
  */
 int knock_ports(unsigned short* ports, int portc, char* dgram, 
-        int sockfd, struct sockaddr_in dsock, unsigned char* key, 
-        int lsfd, struct sockaddr_in* lsock, int mtu);
+        int sockfd, struct sockaddr_in dsock, unsigned char* key); 
 
 #endif // PKC_H

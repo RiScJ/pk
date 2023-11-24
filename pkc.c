@@ -1,6 +1,15 @@
 #include "pk.h"
 #include "pkc.h"
-#include <ctype.h>
+
+volatile sig_atomic_t running = true;
+
+typedef struct {
+    int lsfd;
+    struct sockaddr_in* lsock;
+    int mtu;
+    in_addr_t daddr;
+} auth_args_t;
+
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
     EVP_CIPHER_CTX* ctx;
@@ -146,9 +155,8 @@ int send_packet(int sockfd, char* dgram, struct sockaddr_in dsock) {
 }
 
 int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd, 
-        struct sockaddr_in dsock, unsigned char* key, int lsfd, 
-        struct sockaddr_in* lsock, int mtu) {
-    while (true) {
+        struct sockaddr_in dsock, unsigned char* key) {
+    while (running) {
         printf("knock ");
         fflush(stdout);
         for (int i = 0; i < portc; i++) {
@@ -160,27 +168,39 @@ int knock_ports(unsigned short* ports, int portc, char* dgram, int sockfd,
             int send_err = send_packet(sockfd, dgram, dsock);
             if (send_err != 0) return send_err;
         }
+        sleep(PKC_DELAY_RETRY);
+    }
+    return PK_SUCCESS;
+}
+
+void* get_authresp(void* arg) {
+    auth_args_t* args = (auth_args_t*) arg;
+    int lsfd = args->lsfd;
+    struct sockaddr_in* lsock = args->lsock;
+    int mtu = args->mtu;
+    in_addr_t daddr = args->daddr;
+
+    while (running) {
         char packet[mtu];
         socklen_t saddr_s = sizeof(struct sockaddr_in); 
         int data_s = recvfrom(lsfd, packet, mtu, 0, (struct sockaddr*) 
                 &lsock, &saddr_s);
-
         if (data_s > 0) {
             struct iphdr* iph = (struct iphdr*) packet; 
             struct tcphdr* tcph = (struct tcphdr*) packet 
                     + sizeof(struct iphdr);
             struct in_addr src;
             src.s_addr = iph->saddr;
-            printf("%d\n", tcph->dest);
+            if (iph->saddr != daddr) continue;
+            src.s_addr = iph->saddr;
             printf("%s\n", inet_ntoa(src));
+            running = false;
             if (ntohs(tcph->dest) == PKC_LSOCK_PORT) {
                 printf("%s\n", inet_ntoa(src));
-                break;
             }
         }
-        sleep(PKC_DELAY_RETRY);
     }
-    return PK_SUCCESS;
+    return NULL;
 }
 
 int init_listsock(int* sockfd, struct sockaddr_in** lsock) {
@@ -189,14 +209,7 @@ int init_listsock(int* sockfd, struct sockaddr_in** lsock) {
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
     saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    saddr.sin_port = htons(PKC_LSOCK_PORT);
-    struct timeval timeout;
-    timeout.tv_sec = 4;
-    timeout.tv_usec = 0;
-    if (setsockopt(*sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, 
-            sizeof(timeout)) < 0) {
-        return PK_ERR_SOCK_OPT;
-    }
+    
     if (bind(*sockfd, (struct sockaddr*) &saddr, sizeof(saddr)) == -1) {
         return PK_ERR_SOCK_BIND;
     }
@@ -294,14 +307,22 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Failed to bind listening socket\n");
             exit(EXIT_FAILURE);
     }
-    
-    switch (knock_ports(ports, portc, dgram, sockfd, dsock, key, lsfd, 
-            lsock, mtu)) {
+
+    auth_args_t auth_args;
+    auth_args.lsfd = lsfd;
+    auth_args.lsock = lsock;
+    auth_args.mtu = mtu;
+    auth_args.daddr = daddr;
+
+    pthread_t authresp_thread;
+    pthread_create(&authresp_thread, NULL, get_authresp, (void*) &auth_args);
+ 
+    switch (knock_ports(ports, portc, dgram, sockfd, dsock, key)) { 
         case PK_ERR_CSPRNG:
             fprintf(stderr, "Failed to generate IV\n");
             exit(EXIT_FAILURE);
-        case PK_ERR_ENCRYPT:
-            fprintf(stderr, "\n");
+        case PK_ERR_ENCRYPT: 
+            fprintf(stderr, "\n"); 
             ERR_print_errors_fp(stderr);
             fprintf(stderr, "\n");
             exit(EXIT_FAILURE);
