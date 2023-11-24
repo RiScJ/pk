@@ -6,7 +6,16 @@ mkdir -p /etc/pk
 # Create blank files for the key, port list, and user script
 touch /etc/pk/pk_key
 touch /etc/pk/pk_ports
-touch /etc/pk/pk_auth
+touch /etc/pk/pkd_auth
+touch /etc/pk/pkc_auth
+touch /etc/pk/pkc_prehook
+touch /etc/pk/pkc_posthook
+
+# Make scripts executable
+chmod +x /etc/pk/pkd_auth
+chmod +x /etc/pk/pkc_auth
+chmod +x /etc/pk/pkc_prehook
+chmod +x /etc/pk/pkc_posthook
 
 # Create a random key
 cat /dev/urandom | head -c 32 > /etc/pk/pk_key

@@ -21,13 +21,19 @@
 #define PKC_DELAY_PACKET        100000
 #define PKC_DELAY_RETRY         5
 #define PKC_LSOCK_PORT          12345
+#define PKC_FP_AUTH_SH          "/etc/pk/pkc_auth"
+#define PKC_FP_PREH_SH          "/etc/pk/pkc_prehook"
+#define PKC_FP_POST_SH          "/etc/pk/pkc_posthook"
+#define PKC_CALL_BYTES          128
+#define PKC_PREHOOK_CALL_BYTES  128
+#define PKC_POSTHOOK_CALL_BYTES 128
 
 #define PKD_ARGC                2
 #define PKD_ARGN_IFACE          1
 #define PKD_FLUSH_INTERVAL      60
 #define PKD_MAX_RECV_ERRORS     10
 #define PKD_LISTEN_LO
-#define PKD_FP_AUTH_SH          "/etc/pk/pk_auth"
+#define PKD_FP_AUTH_SH          "/etc/pk/pkd_auth"
 #define PKD_CALL_BYTES          128
 #define PKD_RESP_BYTES          1028
 #define PKD_DELAY_AUTH          100000

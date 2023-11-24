@@ -10,6 +10,10 @@ typedef struct {
     in_addr_t daddr;
 } auth_args_t;
 
+void handle_signal(int signal) {
+    if (signal == SIGINT) running = false;
+}
+
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
         unsigned char* iv, unsigned char* ctext) {
     EVP_CIPHER_CTX* ctx;
@@ -220,6 +224,8 @@ int init_listsock(int* sockfd, struct sockaddr_in** lsock) {
 }
 
 int main(int argc, char** argv) {
+    signal(SIGINT, handle_signal);
+
     char iface[PK_IFACE_MAX_LEN];
     char host[PK_FQDN_MAX_LEN];
     switch (parse_arguments(argc, argv, iface, host)) {
@@ -285,7 +291,16 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Cannot get interface address\n");
             exit(EXIT_FAILURE);
     }
-   
+  
+    struct in_addr ip;
+    ip.s_addr = saddr;
+
+    // Execute prehook
+    char prehook_call[PKC_PREHOOK_CALL_BYTES];
+    sprintf(prehook_call, PKC_FP_PREH_SH " %s", inet_ntoa(ip));
+    system(prehook_call);  
+    // --
+ 
     char dgram[mtu];
     struct iphdr* iph = NULL;
     struct tcphdr* tcph = NULL;
@@ -318,6 +333,11 @@ int main(int argc, char** argv) {
     pthread_create(&authresp_thread, NULL, get_authresp, (void*) &auth_args);
  
     switch (knock_ports(ports, portc, dgram, sockfd, dsock, key)) { 
+        case PK_SUCCESS:
+            char call[PKC_CALL_BYTES];
+            sprintf(call, PKC_FP_AUTH_SH " %s", inet_ntoa(ip));
+            system(call);
+            break;
         case PK_ERR_CSPRNG:
             fprintf(stderr, "Failed to generate IV\n");
             exit(EXIT_FAILURE);
@@ -331,5 +351,12 @@ int main(int argc, char** argv) {
                     strerror(errno));
             exit(EXIT_FAILURE);
     }
+
+    // Execute posthook
+    char posthook_call[PKC_POSTHOOK_CALL_BYTES];
+    sprintf(posthook_call, PKC_FP_POST_SH " %s", inet_ntoa(ip));
+    system(posthook_call);
+    // -- 
+    
     return 0;
 }
