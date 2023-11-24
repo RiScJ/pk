@@ -23,11 +23,16 @@ cat /dev/urandom | head -c 32 > /etc/pk/pk_key
 # Choose three random ports
 for i in `seq 3`
 do
-    echo $(od -An -N2 -i /dev/urandom) > /etc/pk/pk_ports
+    echo $(od -An -N2 -i /dev/urandom) >> /etc/pk/pk_ports
 done
 
-# Install the binary
+# Build from source
+./make-pkd
+./make-pkc
+
+# Install the binaries
 mv pkd /usr/local/bin/pkd
+mv pkc /usr/local/bin/pkc
 
 # Install systemd service file
 cp pkd.service /etc/systemd/system/pkd.service

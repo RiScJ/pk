@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
     }
   
     struct in_addr ip;
-    ip.s_addr = saddr;
+    ip.s_addr = daddr;
 
     // Execute prehook
     char prehook_call[PKC_PREHOOK_CALL_BYTES];
