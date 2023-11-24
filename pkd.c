@@ -188,12 +188,14 @@ int authorize(struct in_addr ip, in_addr_t saddr) {
     char* data = dgram + sizeof(struct iphdr) + sizeof(struct tcphdr);
     strcpy(data, "");
 
+
     struct sockaddr_in sin;
     sin.sin_family = AF_INET;
     sin.sin_port = htons(PKC_LSOCK_PORT);
-    sin.sin_addr.s_addr = saddr;
+    sin.sin_addr.s_addr = daddr;
 
     tcph->source = htons(PKC_LSOCK_PORT);
+    tcph->dest = htons(PKC_LSOCK_PORT);
     tcph->seq = 0;
     tcph->ack_seq = 0;
     tcph->res1 = 0;
