@@ -2,16 +2,12 @@
 #include "pkc.h"
 
 volatile sig_atomic_t running = true;
-
-typedef struct {
-    int lsfd;
-    struct sockaddr_in* lsock;
-    int mtu;
-    in_addr_t daddr;
-} auth_args_t;
+volatile sig_atomic_t authorized = false;
 
 void handle_signal(int signal) {
-    if (signal == SIGINT) running = false;
+    if (signal == SIGINT) {
+        running = false;
+    }
 }
 
 int encrypt(unsigned char* ptext, int ptext_len, unsigned char* key,
@@ -191,17 +187,14 @@ void* get_authresp(void* arg) {
                 &lsock, &saddr_s);
         if (data_s > 0) {
             struct iphdr* iph = (struct iphdr*) packet; 
-            struct tcphdr* tcph = (struct tcphdr*) packet 
-                    + sizeof(struct iphdr);
-            struct in_addr src;
-            src.s_addr = iph->saddr;
+            //struct tcphdr* tcph = (struct tcphdr*) packet 
+            //        + sizeof(struct iphdr);
+            //struct in_addr src;
+            //src.s_addr = iph->saddr;
             if (iph->saddr != daddr) continue;
-            src.s_addr = iph->saddr;
-            printf("%s\n", inet_ntoa(src));
+            printf("\nGot authorization response from server\n");
+            authorized = true;
             running = false;
-            if (ntohs(tcph->dest) == PKC_LSOCK_PORT) {
-                printf("%s\n", inet_ntoa(src));
-            }
         }
     }
     return NULL;
@@ -298,7 +291,9 @@ int main(int argc, char** argv) {
     // Execute prehook
     char prehook_call[PKC_PREHOOK_CALL_BYTES];
     sprintf(prehook_call, PKC_FP_PREH_SH " %s", inet_ntoa(ip));
+    printf("Executing prehook... ");
     system(prehook_call);  
+    printf("done.\n");
     // --
  
     char dgram[mtu];
@@ -330,13 +325,22 @@ int main(int argc, char** argv) {
     auth_args.daddr = daddr;
 
     pthread_t authresp_thread;
-    pthread_create(&authresp_thread, NULL, get_authresp, (void*) &auth_args);
+    if (pthread_create(&authresp_thread, NULL, get_authresp, 
+            (void*) &auth_args) != 0) {
+        fprintf(stderr, "Error creating authorization response thread\n");
+        close(lsfd);
+        exit(EXIT_FAILURE);
+    }
  
+    printf("Knocking %s...\n", inet_ntoa(ip));
     switch (knock_ports(ports, portc, dgram, sockfd, dsock, key)) { 
         case PK_SUCCESS:
+            if (!authorized) break;
             char call[PKC_CALL_BYTES];
             sprintf(call, PKC_FP_AUTH_SH " %s", inet_ntoa(ip));
+            printf("Executing authorization hook... ");
             system(call);
+            printf("done.\n");
             break;
         case PK_ERR_CSPRNG:
             fprintf(stderr, "Failed to generate IV\n");
@@ -355,8 +359,11 @@ int main(int argc, char** argv) {
     // Execute posthook
     char posthook_call[PKC_POSTHOOK_CALL_BYTES];
     sprintf(posthook_call, PKC_FP_POST_SH " %s", inet_ntoa(ip));
+    printf("Executing posthook... ");
     system(posthook_call);
+    printf("done.\n");
     // -- 
     
+    close(lsfd);
     return 0;
 }
