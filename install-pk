@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Create the configuration directory
+mkdir -p /etc/pk
+
+# Create blank files for the key, port list, and user script
+touch /etc/pk/pk_key
+touch /etc/pk/pk_ports
+touch /etc/pk/pkd_auth
+touch /etc/pk/pkc_auth
+touch /etc/pk/pkc_prehook
+touch /etc/pk/pkc_posthook
+
+# Make scripts executable
+chmod +x /etc/pk/pkd_auth
+chmod +x /etc/pk/pkc_auth
+chmod +x /etc/pk/pkc_prehook
+chmod +x /etc/pk/pkc_posthook
+
+# Create a random key
+cat /dev/urandom | head -c 32 > /etc/pk/pk_key
+
+# Choose three random ports
+for i in `seq 3`
+do
+    echo $(od -An -N2 -i /dev/urandom) >> /etc/pk/pk_ports
+done
+
+# Build from source
+./make-pkd
+./make-pkc
+
+# Install the binaries
+mv pkd /usr/local/bin/pkd
+mv pkc /usr/local/bin/pkc
+
+# Install systemd service file
+cp pkd.service /etc/systemd/system/pkd.service
+systemctl daemon-reload
